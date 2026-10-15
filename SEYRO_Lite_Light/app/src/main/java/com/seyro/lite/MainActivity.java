@@ -32,7 +32,8 @@ import android.widget.*;
 public class MainActivity extends Activity {
     private final int bg=0xfff3f7ff, white=0xffffffff, ink=0xff14233b, muted=0xff738198,
         line=0xffe2eaf6, blue=0xff2864e8, paleBlue=0xffeaf2ff, green=0xff118568;
-    private TextView connect,status,hint,profileLinkValue,subscriptionState;
+    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge;
+    private String activeTransport="";
     private SharedPreferences prefs;
     private String profileLink="";
     private boolean demoOn=false;
@@ -77,18 +78,20 @@ public class MainActivity extends Activity {
         super.onCreate(stateBundle);
         prefs=getSharedPreferences("seyro_profile",MODE_PRIVATE);
         profileLink=prefs.getString("subscription_link","");
+        activeTransport=prefs.getString("selected_transport","");
         DebugLog.i(this,"APP","Запуск приложения; VPN state="+SeyroVpnService.vpnState);
         Window w=getWindow();
         w.setStatusBarColor(0xfff3f7ff); w.setNavigationBarColor(0xfff3f7ff);
         w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
-        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false); scroll.setBackgroundColor(bg);
-        LinearLayout root=column(); padding(root,18,dp(92),18,28); scroll.addView(root);
+        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false);
+        scroll.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xffeaf4ff,0xfff8fbff,0xffe6f0ff}));
+        LinearLayout root=column(); padding(root,dp(18),dp(38),dp(18),dp(28)); scroll.addView(root);
 
         LinearLayout header=new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView mark=text("S",25,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(blue,17,0));
-        mark.setElevation(3f); header.addView(mark,new LinearLayout.LayoutParams(48,48));
+        TextView mark=text("S",27,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(0xff087cff,dp(14),0));
+        mark.setElevation(dp(3)); header.addView(mark,new LinearLayout.LayoutParams(dp(48),dp(48)));
         LinearLayout brand=column(); TextView name=text("SEYRO",23,ink,true); name.setLetterSpacing(.07f); brand.addView(name);
         TextView tagline=text("LITE VPN",9,blue,true); tagline.setLetterSpacing(.18f); brand.addView(tagline);
         LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,-2,1); bp.leftMargin=11; header.addView(brand,bp);
@@ -108,12 +111,14 @@ public class MainActivity extends Activity {
         LinearLayout hero=column(); padding(hero,20,22,20,20); hero.setBackground(shape(white,26,line)); hero.setElevation(2f);
         add(root,hero,18);
         LinearLayout center=column(); center.setGravity(Gravity.CENTER);
-        TextView shield=text("S",31,blue,true); shield.setGravity(Gravity.CENTER);
-        shield.setBackground(shape(0xffe7f0ff,100,0));
-        LinearLayout.LayoutParams shieldP=new LinearLayout.LayoutParams(76,76); shieldP.gravity=Gravity.CENTER;
+        TextView shield=text("S",36,white,true); shield.setGravity(Gravity.CENTER);
+        shield.setBackground(shape(0xff087cff,dp(100),0)); shield.setElevation(dp(5));
+        LinearLayout.LayoutParams shieldP=new LinearLayout.LayoutParams(dp(76),dp(76)); shieldP.gravity=Gravity.CENTER;
         center.addView(shield,shieldP);
         status=text("●  НЕ ПОДКЛЮЧЕНО",12,muted,true); status.setGravity(Gravity.CENTER);
-        add(center,status,16); hero.addView(center);
+        add(center,status,dp(12)); hero.addView(center);
+        protocolBadge=pill("ПРОТОКОЛ НЕ ВЫБРАН",blue,paleBlue);
+        LinearLayout.LayoutParams protocolP=new LinearLayout.LayoutParams(-2,-2); protocolP.gravity=Gravity.CENTER; protocolP.topMargin=dp(7); center.addView(protocolBadge,protocolP);
         hint=text(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.",13,muted,false);
         hint.setGravity(Gravity.CENTER); add(hero,hint,8);
         connect=text("⏻    Подключить",16,white,true); connect.setGravity(Gravity.CENTER);
@@ -162,6 +167,7 @@ public class MainActivity extends Activity {
             status.setText("●  ПОДКЛЮЧЕНО"); status.setTextColor(green);
             connect.setText("⏻    Отключиться"); connect.setEnabled(true);
             hint.setText("Защищённое соединение активно.");
+            updateProtocolBadge();
         } else if("connecting".equals(state)||"disconnecting".equals(state)) {
             status.setText("●  "+("connecting".equals(state)?"ПОДКЛЮЧАЕМСЯ":"ОТКЛЮЧАЕМСЯ")); status.setTextColor(blue);
             connect.setText("Подождите…"); connect.setEnabled(false);
@@ -174,8 +180,21 @@ public class MainActivity extends Activity {
             status.setText("●  НЕ ПОДКЛЮЧЕНО"); status.setTextColor(muted);
             connect.setText("⏻    Подключить"); connect.setEnabled(true);
             hint.setText(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.");
+            updateProtocolBadge();
         }
         if(subscriptionState!=null) subscriptionState.setText(profileLink.isEmpty()?"Не настроена":"Профиль добавлен");
+    }
+
+    private void updateProtocolBadge() {
+        if(protocolBadge==null) return;
+        String state=SeyroVpnService.vpnState;
+        String transport=activeTransport;
+        if(transport.isEmpty() && !selectedConfig.isEmpty()) transport=detectTransport(selectedConfig);
+        if("connected".equals(state) && !transport.isEmpty())
+            protocolBadge.setText("VLESS + REALITY  ·  "+transport.toUpperCase(java.util.Locale.ROOT));
+        else if(!transport.isEmpty())
+            protocolBadge.setText("ВЫБРАН ПРОФИЛЬ  ·  "+transport.toUpperCase(java.util.Locale.ROOT));
+        else protocolBadge.setText("ПРОТОКОЛ НЕ ВЫБРАН");
     }
 
     private View menuRow(String title,String subtitle,String icon,Runnable action) {
@@ -222,16 +241,26 @@ public class MainActivity extends Activity {
         renderVpnState();
     }
     private void showSettings() {
-        String[] choices={"Выбрать профиль подключения","Автоматический выбор","VLESS + REALITY","Обновлять профиль вручную","Журнал отладки"};
+        String mode=prefs.getString("selection_mode","auto");
+        String[] choices={"Выбрать профиль подключения",
+            "Автоматический выбор"+("auto".equals(mode)?"  ✓":""),
+            "Ручной выбор"+("manual".equals(mode)?"  ✓":""),
+            "Обновлять профиль вручную","Журнал отладки"};
         new AlertDialog.Builder(this).setTitle("Настройки подключения")
             .setItems(choices,(dialog,which)->{
                 if(which==4) { showDebugLog(); return; }
                 if(which==0) { showProfileChoices(); return; }
-                String message;
-                if(which==1) message="Маршрут будет выбран автоматически сервером SEYRO.";
-                else if(which==2) message="Используется профиль VLESS + REALITY, если он указан в вашей подписке.";
-                else message="Ссылка сохранена локально. Обновление с сервера появится после подключения API.";
-                new AlertDialog.Builder(this).setTitle(choices[which]).setMessage(message).setPositiveButton("Понятно",null).show();
+                if(which==1 || which==2) {
+                    String next=which==1?"auto":"manual";
+                    prefs.edit().putString("selection_mode",next).apply();
+                    new AlertDialog.Builder(this).setTitle("Режим выбора профиля")
+                        .setMessage("Выбран режим: "+("auto".equals(next)?"Автоматический. Приложение выберет первый доступный профиль из подписки.":"Ручной. Перед подключением можно выбрать TCP или XHTTP."))
+                        .setPositiveButton("Понятно",null).show();
+                    return;
+                }
+                new AlertDialog.Builder(this).setTitle("Обновление профиля")
+                    .setMessage("Профиль будет повторно загружен при следующем подключении.")
+                    .setPositiveButton("Понятно",null).show();
             }).setNegativeButton("Закрыть",null).setPositiveButton("Ссылка профиля",(d,w)->showProfile()).show();
     }
     private void showProfileChoices() {
@@ -255,7 +284,10 @@ public class MainActivity extends Activity {
 
     private void selectProfileWithoutStarting(ProfileOption option) {
         selectedConfig=option.config;
+        activeTransport=option.transport;
+        prefs.edit().putString("selected_transport",activeTransport).apply();
         DebugLog.i(this,"PROFILE","Выбран профиль в настройках: "+option.label+"; transport="+option.transport);
+        updateProtocolBadge();
         hint.setText("Выбран профиль: "+option.label+" ("+option.transport.toUpperCase(java.util.Locale.ROOT)+")");
         new AlertDialog.Builder(this).setTitle("Профиль выбран")
             .setMessage(option.label+"\nТранспорт: "+option.transport.toUpperCase(java.util.Locale.ROOT)+"\nНажмите «Подключить» для запуска.")
@@ -311,21 +343,28 @@ public class MainActivity extends Activity {
                     return;
                 }
                 availableProfiles=result;
-                if(result.size()>1) {
+                if(result.size()>1 && "manual".equals(prefs.getString("selection_mode","auto"))) {
                     String[] labels=new String[result.size()];
                     for(int i=0;i<result.size();i++) labels[i]=result.get(i).label+" — "+result.get(i).transport.toUpperCase(java.util.Locale.ROOT);
                     new AlertDialog.Builder(this).setTitle("Выберите профиль подключения")
-                        .setMessage("Проверьте TCP первым. Если сайты не откроются, отключитесь и попробуйте другой транспорт.")
+                        .setMessage("Выберите транспорт TCP или XHTTP.")
                         .setItems(labels,(d,which)->selectProfile(result.get(which)))
                         .setNegativeButton("Отмена",null).show();
-                } else selectProfile(result.get(0));
+                } else {
+                    ProfileOption chosen=result.get(0);
+                    DebugLog.i(this,"PROFILE","Автоматический выбор профиля: "+chosen.label+"; transport="+chosen.transport);
+                    selectProfile(chosen);
+                }
             });
         }).start();
     }
 
     private void selectProfile(ProfileOption option) {
         selectedConfig=option.config;
+        activeTransport=option.transport;
+        prefs.edit().putString("selected_transport",activeTransport).apply();
         DebugLog.i(this,"PROFILE","Выбран профиль: "+option.label+"; transport="+option.transport);
+        updateProtocolBadge();
         hint.setText("Профиль: "+option.label+" ("+option.transport.toUpperCase(java.util.Locale.ROOT)+")");
         requestVpnPermissionAndStart();
     }
