@@ -561,11 +561,7 @@ public class MainActivity extends Activity {
         boolean changed=!next.equals(old);
         prefs.edit().putString("selection_mode",next).apply();
         updateProtocolBadge();
-        if(changed) {
-            Toast.makeText(this,next.equals("auto")
-                ?"Включён автоматический выбор"
-                :"Включён ручной выбор профиля",Toast.LENGTH_SHORT).show();
-        }
+        // The checked card already confirms the mode; avoid stacking transient messages.
         // Update the open settings card in place to avoid the dismiss/reopen flicker.
         if(settingsDialog!=null && settingsDialog.isShowing()) {
             View root=settingsDialog.findViewById(android.R.id.content);
@@ -649,7 +645,6 @@ public class MainActivity extends Activity {
 
     private void loadProfilesForManualChoice() {
         if(profileLink.isEmpty()) { showProfile(); return; }
-        Toast.makeText(this,"Загружаем профили подписки…",Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             java.util.ArrayList<ProfileOption> result=null;
             String problem=null;
@@ -711,9 +706,9 @@ public class MainActivity extends Activity {
         cancel.setBackground(shape(paleBlue,dp(14),0));
         padding(cancel,dp(10),dp(12),dp(10),dp(12));
         buttons.addView(cancel,new LinearLayout.LayoutParams(-1,-2));
-        // The picker is shown above the still-open settings card. Avoid applying
-        // a second dim layer, which looks like the whole menu jumps/darkens.
-        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.0f));
+        // Dim the settings behind the picker slightly so the two cards are visually
+        // separated without the strong double-dimming effect.
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.22f));
         cancel.setOnClickListener(v->dialog.dismiss());
         dialog.show();
     }
@@ -725,7 +720,7 @@ public class MainActivity extends Activity {
         DebugLog.i(this,"PROFILE","Выбран профиль в настройках: "+option.label+"; transport="+option.transport);
         updateProtocolBadge();
         if(hint!=null) hint.setText("Выбран профиль: "+option.label+" ("+option.transport.toUpperCase(java.util.Locale.ROOT)+")");
-        Toast.makeText(this,"Выбран "+option.transport.toUpperCase(java.util.Locale.ROOT),Toast.LENGTH_SHORT).show();
+        // The selected transport is shown in the settings card; no extra toast needed.
 
         // Reopen the settings card so the selected transport is visible immediately,
         // without an extra confirmation dialog.
@@ -964,8 +959,17 @@ public class MainActivity extends Activity {
         subscriptionExpire=prefs.getLong("cached_subscription_expire",-1);
     }
 
-    private void refreshSubscriptionMetadataInBackground() {
+    private volatile boolean subscriptionRefreshInProgress=false;
+    private long lastSubscriptionRefreshAt=0L;
+
+    private synchronized void refreshSubscriptionMetadataInBackground() {
         final String link=profileLink;
+        long now=System.currentTimeMillis();
+        // Lifecycle callbacks can fire back-to-back (create/start/resume). Do not
+        // issue duplicate subscription requests; manual refresh remains available.
+        if(subscriptionRefreshInProgress || (now-lastSubscriptionRefreshAt)<30000L) return;
+        subscriptionRefreshInProgress=true;
+        lastSubscriptionRefreshAt=now;
         new Thread(() -> {
             java.net.HttpURLConnection conn=null;
             try {
@@ -991,6 +995,7 @@ public class MainActivity extends Activity {
                 DebugLog.w(this,"SUBSCRIPTION","Не удалось обновить метаданные при запуске: "+e.getClass().getSimpleName());
             } finally {
                 if(conn!=null) conn.disconnect();
+                synchronized(MainActivity.this) { subscriptionRefreshInProgress=false; }
             }
         }).start();
     }
