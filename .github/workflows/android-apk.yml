@@ -45,13 +45,23 @@ jobs:
       - name: Configure persistent APK signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "::error::Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD in GitHub repository Actions secrets."
-            exit 1
-          fi
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository Actions secret: $name"
+              exit 1
+            fi
+          done
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > SEYRO_Lite_Light/app/seyro-release.jks
           test -s SEYRO_Lite_Light/app/seyro-release.jks
+          keytool -list -keystore SEYRO_Lite_Light/app/seyro-release.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            -keypass "$ANDROID_KEY_PASSWORD" >/dev/null
+          echo "Signing keystore and credentials validated."
       - name: Build signed APK
         working-directory: SEYRO_Lite_Light
         env:
