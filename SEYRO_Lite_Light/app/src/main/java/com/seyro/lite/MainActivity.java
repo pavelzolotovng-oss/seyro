@@ -277,16 +277,34 @@ public class MainActivity extends Activity {
                 }).show());
         }
 
+        LinearLayout actions=new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams actionsP=new LinearLayout.LayoutParams(-1,-2);
+        actionsP.topMargin=dp(12);
+        box.addView(actions,actionsP);
+
+        TextView cancel=text("Отмена",14,blue,true);
+        cancel.setGravity(Gravity.CENTER);
+        cancel.setPadding(dp(10),dp(12),dp(10),dp(12));
+        cancel.setBackground(shape(paleBlue,dp(14),line));
+        LinearLayout.LayoutParams cancelP=new LinearLayout.LayoutParams(0,-2,1);
+        cancelP.rightMargin=dp(6);
+        actions.addView(cancel,cancelP);
+
         TextView save=text("✓   Сохранить",14,blue,true);
         save.setGravity(Gravity.CENTER);
-        save.setPadding(dp(12),dp(12),dp(12),dp(12));
+        save.setPadding(dp(10),dp(12),dp(10),dp(12));
         save.setBackground(shape(paleBlue,dp(14),0));
-        add(box,save,dp(12));
+        LinearLayout.LayoutParams saveP=new LinearLayout.LayoutParams(0,-2,1);
+        saveP.leftMargin=dp(6);
+        actions.addView(save,saveP);
 
         AlertDialog dialog=new AlertDialog.Builder(this)
             .setTitle("Профиль и подключение")
             .setView(box)
             .create();
+        cancel.setOnClickListener(v->dialog.dismiss());
         save.setOnClickListener(v->{
             String value=input.getText().toString().trim();
             if(value.isEmpty()) {
