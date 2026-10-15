@@ -210,29 +210,106 @@ public class MainActivity extends Activity {
         View d=new View(this); d.setBackgroundColor(line); parent.addView(d,new LinearLayout.LayoutParams(-1,1));
     }
     private void showProfile() {
-        LinearLayout box=column(); padding(box,2,4,2,0);
-        box.addView(text("Ссылка из личного кабинета SEYRO",13,ink,true));
-        TextView description=text("Вставьте постоянную ссылку подписки, которую выдали в профиле. Она хранится только на этом устройстве.",11,muted,false);
-        add(box,description,5);
-        EditText input=new EditText(this); input.setSingleLine(true); input.setText(profileLink);
-        input.setHint("https://seyro.ru/… или vless://…");
-        input.setTextSize(13); input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
-        add(box,input,10);
-        new AlertDialog.Builder(this).setTitle("Профиль и подключение").setView(box)
-            .setNegativeButton("Отмена",null).setNeutralButton("Удалить ссылку",(d,w)->{
-                profileLink=""; prefs.edit().remove("subscription_link").apply(); refreshProfileState();
-            }).setPositiveButton("Сохранить",(d,w)->{
-                String value=input.getText().toString().trim();
-                if(!value.isEmpty()&&!validLink(value)) {
-                    new AlertDialog.Builder(this).setTitle("Проверьте ссылку")
-                        .setMessage("Поддерживаются ссылки https://, http:// и отдельные профили vless://.")
-                        .setPositiveButton("OK",null).show(); return;
-                }
-                profileLink=value; selectedConfig=""; availableProfiles.clear(); prefs.edit().putString("subscription_link",profileLink).apply();
-                selectedConfig=""; DebugLog.i(this,"PROFILE","Ссылка подписки "+(profileLink.isEmpty()?"удалена":"сохранена; значение скрыто"));
-                refreshProfileState();
-            }).show();
+        final boolean hasProfile=!profileLink.trim().isEmpty();
+        LinearLayout box=column();
+        padding(box,dp(20),dp(8),dp(20),dp(4));
+        TextView icon=text(hasProfile?"✓":"＋",26,white,true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(hasProfile?green:blue,dp(18),0));
+        LinearLayout.LayoutParams iconP=new LinearLayout.LayoutParams(dp(56),dp(56));
+        iconP.gravity=Gravity.CENTER_HORIZONTAL;
+        box.addView(icon,iconP);
+
+        TextView title=text(hasProfile?"Профиль добавлен":"Добавьте профиль SEYRO",18,ink,true);
+        title.setGravity(Gravity.CENTER);
+        add(box,title,dp(12));
+        TextView description=text(hasProfile
+            ?"Ссылка подписки сохранена на этом устройстве. При необходимости её можно заменить."
+            :"Вставьте постоянную ссылку подписки из личного кабинета SEYRO. Ссылка хранится только на этом устройстве.",12,muted,false);
+        description.setGravity(Gravity.CENTER);
+        add(box,description,dp(6));
+
+        EditText input=new EditText(this);
+        input.setSingleLine(true);
+        input.setText(profileLink);
+        input.setHint("https://… или vless://…");
+        input.setTextSize(14);
+        input.setSelectAllOnFocus(false);
+        input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        input.setPadding(dp(14),dp(12),dp(14),dp(12));
+        input.setBackground(shape(0xfff5f8ff,dp(14),line));
+        add(box,input,dp(18));
+
+        TextView paste=text("▣   Вставить из буфера обмена",14,blue,true);
+        paste.setGravity(Gravity.CENTER);
+        paste.setPadding(dp(12),dp(12),dp(12),dp(12));
+        paste.setBackground(shape(paleBlue,dp(14),0));
+        add(box,paste,dp(10));
+        paste.setOnClickListener(v->{
+            android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+            if(clipboard!=null && clipboard.hasPrimaryClip() && clipboard.getPrimaryClip().getItemCount()>0) {
+                CharSequence clip=clipboard.getPrimaryClip().getItemAt(0).coerceToText(this);
+                if(clip!=null && clip.length()>0) {
+                    input.setText(clip.toString().trim());
+                    input.setSelection(input.length());
+                    Toast.makeText(this,"Ссылка вставлена",Toast.LENGTH_SHORT).show();
+                } else Toast.makeText(this,"Буфер обмена пуст",Toast.LENGTH_SHORT).show();
+            } else Toast.makeText(this,"Буфер обмена пуст",Toast.LENGTH_SHORT).show();
+        });
+
+        if(hasProfile) {
+            TextView remove=text("Удалить сохранённую ссылку",13,0xffc13e4b,true);
+            remove.setGravity(Gravity.CENTER);
+            remove.setPadding(dp(12),dp(13),dp(12),dp(10));
+            add(box,remove,dp(8));
+            remove.setOnClickListener(v->new AlertDialog.Builder(this)
+                .setTitle("Удалить профиль?")
+                .setMessage("Сохранённая ссылка будет удалена с этого устройства. Для подключения потребуется добавить её снова.")
+                .setNegativeButton("Оставить",null)
+                .setPositiveButton("Удалить",(dialog,which)->{
+                    profileLink="";
+                    selectedConfig="";
+                    activeTransport="";
+                    availableProfiles.clear();
+                    prefs.edit().remove("subscription_link").remove("selected_transport").apply();
+                    DebugLog.i(this,"PROFILE","Ссылка подписки удалена");
+                    refreshProfileState();
+                }).show());
+        }
+
+        AlertDialog dialog=new AlertDialog.Builder(this)
+            .setTitle("Профиль и подключение")
+            .setView(box)
+            .setNegativeButton("Отмена",null)
+            .setPositiveButton(hasProfile?"Сохранить изменения":"Добавить профиль",null)
+            .create();
+        dialog.setOnShowListener(ignored->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            String value=input.getText().toString().trim();
+            if(value.isEmpty()) {
+                input.setError("Вставьте ссылку подписки");
+                return;
+            }
+            if(!validLink(value)) {
+                input.setError("Нужна ссылка HTTPS, HTTP или VLESS");
+                return;
+            }
+            boolean changed=!value.equals(profileLink);
+            profileLink=value;
+            prefs.edit().putString("subscription_link",profileLink).apply();
+            if(changed) {
+                selectedConfig="";
+                activeTransport="";
+                availableProfiles.clear();
+                prefs.edit().remove("selected_transport").apply();
+            }
+            DebugLog.i(this,"PROFILE","Ссылка подписки сохранена; значение скрыто");
+            refreshProfileState();
+            dialog.dismiss();
+            Toast.makeText(this,changed?"Профиль сохранён":"Ссылка не изменилась",Toast.LENGTH_SHORT).show();
+        }));
+        dialog.show();
     }
+
     private boolean validLink(String value) {
         String s=value.toLowerCase(java.util.Locale.ROOT);
         return s.startsWith("https://")||s.startsWith("http://")||s.startsWith("vless://");
