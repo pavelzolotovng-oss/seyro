@@ -33,20 +33,23 @@ public class SeyroVpnService extends VpnService {
     private CoreController controller;
 
     private final CoreCallbackHandler callback = new CoreCallbackHandler() {
-        @Override public long startup() { return 0L; }
-        @Override public long shutdown() { return 0L; }
+        @Override public long startup() { DebugLog.i(SeyroVpnService.this,"XRAY","Core callback startup"); return 0L; }
+        @Override public long shutdown() { DebugLog.i(SeyroVpnService.this,"XRAY","Core callback shutdown"); return 0L; }
         @Override public long onEmitStatus(long level, String message) {
             Log.i(TAG, "Xray[" + level + "]: " + message);
+            DebugLog.i(SeyroVpnService.this,"XRAY","level="+level+" "+message);
             return 0L;
         }
     };
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        DebugLog.i(this,"SERVICE","onStartCommand action="+(intent==null?"null":intent.getAction()));
         if(intent==null || ACTION_STOP.equals(intent.getAction())) {
             setVpnState("disconnecting","");
             vpnExecutor.execute(() -> {
                 stopVpn();
                 setVpnState("disconnected","");
+                DebugLog.i(this,"VPN","Отключение завершено");
                 mainHandler.post(() -> { stopForeground(true); stopSelf(startId); });
             });
             return START_NOT_STICKY;
@@ -67,13 +70,16 @@ public class SeyroVpnService extends VpnService {
             stopSelf(startId);
             return START_NOT_STICKY;
         }
+        DebugLog.i(this,"VPN","Начинается запуск ядра Xray");
         setVpnState("connecting","");
         vpnExecutor.execute(() -> {
             try {
                 startVpn(config);
+                DebugLog.i(this,"VPN","Xray запущен; интерфейс создан; проверка доступности интернета ещё не выполнена");
                 setVpnState("connected","");
             } catch(Exception e) {
                 Log.e(TAG,"VPN start failed",e);
+                DebugLog.e(this,"VPN","Ошибка запуска: "+e.getClass().getSimpleName()+": "+safeMessage(e));
                 stopVpn();
                 setVpnState("error","Xray не запустился: "+safeMessage(e));
                 mainHandler.post(() -> { stopForeground(true); stopSelf(startId); });
@@ -88,6 +94,7 @@ public class SeyroVpnService extends VpnService {
     }
 
     private void setVpnState(String state,String error) {
+        DebugLog.i(this,"STATE","VPN state="+state+(error==null||error.isEmpty()?"":"; error="+error));
         vpnState=state;
         lastError=error;
         Intent broadcast=new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName());
@@ -117,6 +124,7 @@ public class SeyroVpnService extends VpnService {
     }
 
     private void startVpn(String config) throws Exception {
+        DebugLog.i(this,"VPN","Подготовка TUN-интерфейса");
         stopVpn();
         Builder builder = new Builder();
         builder.setSession("SEYRO Lite")
@@ -127,16 +135,20 @@ public class SeyroVpnService extends VpnService {
             .addDnsServer("9.9.9.9");
         tun = builder.establish();
         if (tun == null) throw new IllegalStateException("Android did not establish the VPN interface");
+        DebugLog.i(this,"VPN","TUN-интерфейс создан; fd доступен; MTU=1500; IPv4 default route и DNS заданы");
         Seq.setContext(getApplicationContext());
         // AndroidLibXrayLite requires an XUDP BaseKey of exactly 32 bytes.
         Libv2ray.initCoreEnv(getFilesDir().getAbsolutePath(), "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY");
         controller = Libv2ray.newCoreController(callback);
+        DebugLog.i(this,"XRAY","Запуск Xray StartLoop; конфигурация и секреты не записываются");
         controller.startLoop(config, tun.getFd());
+        DebugLog.i(this,"XRAY","StartLoop вернулся; isRunning="+controller.getIsRunning());
         if (!controller.getIsRunning()) throw new IllegalStateException("Xray core did not start");
         Log.i(TAG, "VPN interface and Xray core started");
     }
 
     private void stopVpn() {
+        DebugLog.i(this,"VPN","Остановка ядра/закрытие TUN");
         try {
             if (controller != null) controller.stopLoop();
         } catch (Exception e) {
@@ -148,6 +160,7 @@ public class SeyroVpnService extends VpnService {
     }
 
     @Override public void onRevoke() {
+        DebugLog.w(this,"VPN","Android отозвал VPN-разрешение");
         setVpnState("disconnected","");
         stopVpn();
         stopForeground(true);
@@ -156,6 +169,7 @@ public class SeyroVpnService extends VpnService {
     }
 
     @Override public void onDestroy() {
+        DebugLog.i(this,"SERVICE","Служба уничтожается");
         vpnExecutor.shutdownNow();
         stopVpn();
         stopForeground(true);
