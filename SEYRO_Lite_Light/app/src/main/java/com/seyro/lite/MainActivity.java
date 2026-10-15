@@ -43,7 +43,7 @@ public class MainActivity extends Activity {
         ProfileOption(String label,String transport,String config) { this.label=label; this.transport=transport; this.config=config; }
     }
     private static final int VPN_PERMISSION_REQUEST=71;
-    private static final String APP_VERSION="0.6-light";
+    private static final String APP_VERSION="0.7-light";
     private boolean vpnStateReceiverRegistered=false;
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) { renderVpnState(); }
@@ -222,17 +222,46 @@ public class MainActivity extends Activity {
         renderVpnState();
     }
     private void showSettings() {
-        String[] choices={"Автоматический выбор","VLESS + REALITY","Обновлять профиль вручную","Журнал отладки"};
+        String[] choices={"Выбрать профиль подключения","Автоматический выбор","VLESS + REALITY","Обновлять профиль вручную","Журнал отладки"};
         new AlertDialog.Builder(this).setTitle("Настройки подключения")
             .setItems(choices,(dialog,which)->{
-                if(which==3) { showDebugLog(); return; }
+                if(which==4) { showDebugLog(); return; }
+                if(which==0) { showProfileChoices(); return; }
                 String message;
-                if(which==0) message="Маршрут будет выбран автоматически сервером SEYRO.";
-                else if(which==1) message="Используется профиль VLESS + REALITY, если он указан в вашей подписке.";
+                if(which==1) message="Маршрут будет выбран автоматически сервером SEYRO.";
+                else if(which==2) message="Используется профиль VLESS + REALITY, если он указан в вашей подписке.";
                 else message="Ссылка сохранена локально. Обновление с сервера появится после подключения API.";
                 new AlertDialog.Builder(this).setTitle(choices[which]).setMessage(message).setPositiveButton("Понятно",null).show();
             }).setNegativeButton("Закрыть",null).setPositiveButton("Ссылка профиля",(d,w)->showProfile()).show();
     }
+    private void showProfileChoices() {
+        if(!"disconnected".equals(SeyroVpnService.vpnState)) {
+            new AlertDialog.Builder(this).setTitle("Сначала отключите VPN")
+                .setMessage("Выбор транспорта доступен после отключения.")
+                .setPositiveButton("Понятно",null).show();
+            return;
+        }
+        if(!availableProfiles.isEmpty()) {
+            String[] labels=new String[availableProfiles.size()];
+            for(int i=0;i<labels.length;i++) labels[i]=availableProfiles.get(i).label+" — "+availableProfiles.get(i).transport.toUpperCase(java.util.Locale.ROOT);
+            new AlertDialog.Builder(this).setTitle("Выберите профиль")
+                .setItems(labels,(d,which)->selectProfileWithoutStarting(availableProfiles.get(which)))
+                .setNegativeButton("Отмена",null).show();
+        } else {
+            selectedConfig="";
+            onConnect();
+        }
+    }
+
+    private void selectProfileWithoutStarting(ProfileOption option) {
+        selectedConfig=option.config;
+        DebugLog.i(this,"PROFILE","Выбран профиль в настройках: "+option.label+"; transport="+option.transport);
+        hint.setText("Выбран профиль: "+option.label+" ("+option.transport.toUpperCase(java.util.Locale.ROOT)+")");
+        new AlertDialog.Builder(this).setTitle("Профиль выбран")
+            .setMessage(option.label+"\nТранспорт: "+option.transport.toUpperCase(java.util.Locale.ROOT)+"\nНажмите «Подключить» для запуска.")
+            .setPositiveButton("Понятно",null).show();
+    }
+
     private void showDebugLog() {
         String log=DebugLog.read(this);
         if(log.isEmpty()) log="Журнал пока пуст. Повторите подключение, затем откройте этот экран.";
