@@ -32,7 +32,9 @@ import android.widget.*;
 public class MainActivity extends Activity {
     private final int bg=0xfff3f7ff, white=0xffffffff, ink=0xff14233b, muted=0xff738198,
         line=0xffe2eaf6, blue=0xff2864e8, paleBlue=0xffeaf2ff, green=0xff118568;
-    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge,userGreeting,subscriptionExpiryText,trafficSummary,trafficPercent;\n    private View trafficProgressFill;\n    private LinearLayout trafficBarTrack;
+    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge,userGreeting,subscriptionExpiryText,trafficSummary,trafficPercent;
+    private View trafficProgressFill;
+    private LinearLayout trafficBarTrack;
     private volatile String subscriptionTitle="", subscriptionAnnounce="";
     private volatile long trafficUpload=-1, trafficDownload=-1, trafficTotal=-1, subscriptionExpire=-1;
     private String activeTransport="";
