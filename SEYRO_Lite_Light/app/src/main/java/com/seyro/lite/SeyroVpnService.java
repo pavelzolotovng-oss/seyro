@@ -18,11 +18,11 @@ public class SeyroVpnService extends VpnService {
     private CoreController controller;
 
     private final CoreCallbackHandler callback = new CoreCallbackHandler() {
-        @Override public int startup() { return 0; }
-        @Override public int shutdown() { return 0; }
-        @Override public int onEmitStatus(int level, String message) {
+        @Override public long startup() { return 0L; }
+        @Override public long shutdown() { return 0L; }
+        @Override public long onEmitStatus(long level, String message) {
             Log.i(TAG, "Xray[" + level + "]: " + message);
-            return 0;
+            return 0L;
         }
     };
 
