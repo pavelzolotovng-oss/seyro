@@ -469,9 +469,10 @@ public class MainActivity extends Activity {
         JSONObject block=new JSONObject().put("tag","block").put("protocol","blackhole");
         JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
         JSONObject routing=new JSONObject().put("domainStrategy","AsIs")
-            .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy")));
-        JSONObject inbound=new JSONObject().put("tag","tun-in").put("port",0)
-            .put("protocol","tun").put("settings",new JSONObject().put("name","seyro").put("MTU",1400));
+            .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("socks-in")).put("outboundTag","proxy")));
+        // HEV tun2socks feeds packets into this local SOCKS inbound; Xray itself does not own the TUN fd.
+        JSONObject inbound=new JSONObject().put("tag","socks-in").put("listen","127.0.0.1").put("port",10808)
+            .put("protocol","socks").put("settings",new JSONObject().put("auth","noauth").put("udp",true).put("ip","127.0.0.1"));
         return new JSONObject().put("log",new JSONObject().put("loglevel","debug"))
             .put("stats",new JSONObject())
             .put("policy",new JSONObject()
@@ -516,9 +517,10 @@ public class MainActivity extends Activity {
         JSONObject block=new JSONObject().put("tag","block").put("protocol","blackhole");
         JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
         JSONObject routing=new JSONObject().put("domainStrategy","AsIs")
-            .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy")));
-        JSONObject inbound=new JSONObject().put("tag","tun-in").put("port",0)
-            .put("protocol","tun").put("settings",new JSONObject().put("name","seyro").put("MTU",1400));
+            .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("socks-in")).put("outboundTag","proxy")));
+        // HEV tun2socks feeds packets into this local SOCKS inbound; Xray itself does not own the TUN fd.
+        JSONObject inbound=new JSONObject().put("tag","socks-in").put("listen","127.0.0.1").put("port",10808)
+            .put("protocol","socks").put("settings",new JSONObject().put("auth","noauth").put("udp",true).put("ip","127.0.0.1"));
         // Xray's native TUN inbound consumes the VpnService file descriptor passed to StartLoop.
         return new JSONObject().put("log",new JSONObject().put("loglevel","warning"))
             .put("stats",new JSONObject())
