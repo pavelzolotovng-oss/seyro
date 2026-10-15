@@ -129,7 +129,7 @@ public class SeyroVpnService extends VpnService {
         if (tun == null) throw new IllegalStateException("Android did not establish the VPN interface");
         Seq.setContext(getApplicationContext());
         // AndroidLibXrayLite requires an XUDP BaseKey of exactly 32 bytes.
-        Libv2ray.initCoreEnv(getFilesDir().getAbsolutePath(), "seyro-lite-xudp-basekey-20261015");
+        Libv2ray.initCoreEnv(getFilesDir().getAbsolutePath(), "seyro-xudp-basekey-20261015-1234");
         controller = Libv2ray.newCoreController(callback);
         controller.startLoop(config, tun.getFd());
         if (!controller.getIsRunning()) throw new IllegalStateException("Xray core did not start");
