@@ -375,8 +375,8 @@ public class MainActivity extends Activity {
         JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
         JSONObject routing=new JSONObject().put("domainStrategy","AsIs")
             .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy")));
-        JSONObject inbound=new JSONObject().put("tag","tun-in").put("listen","127.0.0.1").put("port",10808)
-            .put("protocol","socks").put("settings",new JSONObject().put("auth","noauth").put("udp",true));
+        JSONObject inbound=new JSONObject().put("tag","tun-in").put("port",0)
+            .put("protocol","tun").put("settings",new JSONObject().put("name","seyro").put("MTU",1500));
         return new JSONObject().put("log",new JSONObject().put("loglevel","warning"))
             .put("inbounds",new JSONArray().put(inbound)).put("outbounds",outbounds).put("routing",routing).toString();
     }
@@ -418,9 +418,9 @@ public class MainActivity extends Activity {
         JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
         JSONObject routing=new JSONObject().put("domainStrategy","AsIs")
             .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy")));
-        JSONObject inbound=new JSONObject().put("tag","tun-in").put("listen","127.0.0.1").put("port",10808)
-            .put("protocol","socks").put("settings",new JSONObject().put("auth","noauth").put("udp",true));
-        // AndroidLibXrayLite uses the TUN file descriptor passed to StartLoop; this config routes its traffic to the proxy outbound.
+        JSONObject inbound=new JSONObject().put("tag","tun-in").put("port",0)
+            .put("protocol","tun").put("settings",new JSONObject().put("name","seyro").put("MTU",1500));
+        // Xray's native TUN inbound consumes the VpnService file descriptor passed to StartLoop.
         return new JSONObject().put("log",new JSONObject().put("loglevel","warning"))
             .put("inbounds",new JSONArray().put(inbound)).put("outbounds",outbounds).put("routing",routing).toString();
     }
