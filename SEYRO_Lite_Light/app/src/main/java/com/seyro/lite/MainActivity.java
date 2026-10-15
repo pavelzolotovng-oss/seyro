@@ -83,6 +83,7 @@ public class MainActivity extends Activity {
         prefs=getSharedPreferences("seyro_profile",MODE_PRIVATE);
         profileLink=prefs.getString("subscription_link","");
         activeTransport=prefs.getString("selected_transport","");
+        loadCachedSubscriptionMetadata();
         DebugLog.i(this,"APP","Запуск приложения; VPN state="+SeyroVpnService.vpnState);
         Window w=getWindow();
         w.setStatusBarColor(0xfff3f7ff); w.setNavigationBarColor(0xfff3f7ff);
@@ -164,7 +165,7 @@ public class MainActivity extends Activity {
         LinearLayout sub=card(); sub.setElevation(1f); LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-2,1); hp.rightMargin=6;
         pair.addView(sub,hp); sub.setOnClickListener(v->showSubscription());
         sub.addView(text("ПОДПИСКА",10,muted,true));
-        subscriptionState=text(profileLink.isEmpty()?"Не настроена":"Профиль добавлен",14,ink,true);
+        subscriptionState=text(profileLink.isEmpty()?"Не настроена":(subscriptionExpire>0?"Активна до "+new java.text.SimpleDateFormat("dd.MM.yyyy",java.util.Locale.getDefault()).format(new java.util.Date(subscriptionExpire*1000L)):"Профиль добавлен"),14,ink,true);
         add(sub,subscriptionState,7);
         LinearLayout help=card(); help.setElevation(1f); LinearLayout.LayoutParams hp2=new LinearLayout.LayoutParams(0,-2,1); hp2.leftMargin=6;
         pair.addView(help,hp2); help.setOnClickListener(v->showHelp());
@@ -174,6 +175,7 @@ public class MainActivity extends Activity {
         footer.setGravity(Gravity.CENTER); add(root,footer,20);
         setContentView(scroll);
         renderVpnState();
+        if(!profileLink.isEmpty()) refreshSubscriptionMetadataInBackground();
     }
 
     @Override protected void onStart() {
@@ -212,7 +214,7 @@ public class MainActivity extends Activity {
             hint.setText(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.");
             updateProtocolBadge();
         }
-        if(subscriptionState!=null) subscriptionState.setText(profileLink.isEmpty()?"Не настроена":"Профиль добавлен");
+        updateProfileSubscriptionState();
         updateSubscriptionWidgets();
     }
 
@@ -441,18 +443,18 @@ public class MainActivity extends Activity {
         StringBuilder info=new StringBuilder();
         if(profileLink.isEmpty()) info.append("Ссылка подписки ещё не добавлена. Откройте «Профиль и безопасность».");
         else {
-            if(!subscriptionTitle.isEmpty()) info.append(subscriptionTitle).append("\\n\\n");
+            if(!subscriptionTitle.isEmpty()) info.append(subscriptionTitle).append("\n\n");
             if(trafficUpload>=0 || trafficDownload>=0) {
-                info.append("Отправлено: ").append(trafficUpload<0?"—":formatBytes(trafficUpload)).append("\\n");
-                info.append("Получено: ").append(trafficDownload<0?"—":formatBytes(trafficDownload)).append("\\n");
+                info.append("Отправлено: ").append(trafficUpload<0?"—":formatBytes(trafficUpload)).append("\n");
+                info.append("Получено: ").append(trafficDownload<0?"—":formatBytes(trafficDownload)).append("\n");
                 if(trafficTotal>0) {
                     long used=Math.max(0,trafficUpload)+Math.max(0,trafficDownload);
-                    info.append("Использовано: ").append(formatBytes(used)).append(" из ").append(formatBytes(trafficTotal)).append("\\n");
-                    info.append("Осталось: ").append(formatBytes(Math.max(0,trafficTotal-used))).append("\\n");
+                    info.append("Использовано: ").append(formatBytes(used)).append(" из ").append(formatBytes(trafficTotal)).append("\n");
+                    info.append("Осталось: ").append(formatBytes(Math.max(0,trafficTotal-used))).append("\n");
                 }
-            } else info.append("Данные о трафике сервером не переданы.\\n");
-            if(subscriptionExpire>0) info.append("Действует до: ").append(new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(subscriptionExpire*1000L))).append("\\n");
-            if(!subscriptionAnnounce.isEmpty()) info.append("\\n").append(subscriptionAnnounce);
+            } else info.append("Данные о трафике сервером не переданы.\n");
+            if(subscriptionExpire>0) info.append("Действует до: ").append(new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(subscriptionExpire*1000L))).append("\n");
+            if(!subscriptionAnnounce.isEmpty()) info.append("\n").append(subscriptionAnnounce);
         }
         new AlertDialog.Builder(this).setTitle("Моя подписка")
             .setMessage(info.toString())
@@ -503,10 +505,65 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void loadCachedSubscriptionMetadata() {
+        subscriptionTitle=prefs.getString("cached_subscription_title","");
+        subscriptionAnnounce=prefs.getString("cached_subscription_announce","");
+        trafficUpload=prefs.getLong("cached_traffic_upload",-1);
+        trafficDownload=prefs.getLong("cached_traffic_download",-1);
+        trafficTotal=prefs.getLong("cached_traffic_total",-1);
+        subscriptionExpire=prefs.getLong("cached_subscription_expire",-1);
+    }
+
+    private void refreshSubscriptionMetadataInBackground() {
+        final String link=profileLink;
+        new Thread(() -> {
+            java.net.HttpURLConnection conn=null;
+            try {
+                URL url=new URL(link);
+                if(!"https".equalsIgnoreCase(url.getProtocol()) && !"http".equalsIgnoreCase(url.getProtocol())) return;
+                conn=(java.net.HttpURLConnection)url.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(10000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent","SEYRO-Lite/"+APP_VERSION);
+                int code=conn.getResponseCode();
+                if(code>=200 && code<300) {
+                    readSubscriptionMetadata(conn);
+                    runOnUiThread(() -> {
+                        if(!link.equals(profileLink)) return;
+                        if(userGreeting!=null) userGreeting.setText(greetingText());
+                        updateSubscriptionWidgets();
+                        updateProfileSubscriptionState();
+                    });
+                    DebugLog.i(this,"SUBSCRIPTION","Кэш подписки обновлён при запуске; HTTP "+code);
+                } else DebugLog.w(this,"SUBSCRIPTION","Обновление метаданных при запуске: HTTP "+code);
+            } catch(Exception e) {
+                DebugLog.w(this,"SUBSCRIPTION","Не удалось обновить метаданные при запуске: "+e.getClass().getSimpleName());
+            } finally {
+                if(conn!=null) conn.disconnect();
+            }
+        }).start();
+    }
+
+    private void updateProfileSubscriptionState() {
+        if(subscriptionState==null) return;
+        if(profileLink.isEmpty()) {
+            subscriptionState.setText("Не настроена");
+            return;
+        }
+        if(subscriptionExpire>0) {
+            String date=new java.text.SimpleDateFormat("dd.MM.yyyy",java.util.Locale.getDefault())
+                .format(new java.util.Date(subscriptionExpire*1000L));
+            subscriptionState.setText("Активна до "+date);
+        } else {
+            subscriptionState.setText("Профиль добавлен");
+        }
+    }
+
     private String greetingText() {
         if(!subscriptionAnnounce.isEmpty()) return subscriptionAnnounce;
-        if(!subscriptionTitle.isEmpty()) return "Добро пожаловать!\\n"+subscriptionTitle;
-        return "Ваш интернет.\\nПод защитой.";
+        if(!subscriptionTitle.isEmpty()) return "Добро пожаловать, "+subscriptionTitle;
+        return "Ваш интернет.\nПод защитой.";
     }
 
     private String decodeMetadataHeader(String value) {
@@ -527,9 +584,10 @@ public class MainActivity extends Activity {
     }
 
     private void readSubscriptionMetadata(java.net.HttpURLConnection conn) {
-        subscriptionTitle=decodeMetadataHeader(conn.getHeaderField("profile-title"));
-        subscriptionAnnounce=decodeMetadataHeader(conn.getHeaderField("announce"));
-        trafficUpload=-1; trafficDownload=-1; trafficTotal=-1; subscriptionExpire=-1;
+        String title=decodeMetadataHeader(conn.getHeaderField("profile-title"));
+        String announce=decodeMetadataHeader(conn.getHeaderField("announce"));
+        if(!title.isEmpty()) subscriptionTitle=title;
+        if(!announce.isEmpty()) subscriptionAnnounce=announce;
         String userInfo=conn.getHeaderField("subscription-userinfo");
         if(userInfo!=null) for(String part:userInfo.split(";")) {
             String[] kv=part.trim().split("=",2);
@@ -544,7 +602,16 @@ public class MainActivity extends Activity {
                 }
             } catch(NumberFormatException ignored) {}
         }
-        DebugLog.i(this,"SUBSCRIPTION","Метаданные: title="+(!subscriptionTitle.isEmpty())+
+        prefs.edit()
+            .putString("cached_subscription_title",subscriptionTitle)
+            .putString("cached_subscription_announce",subscriptionAnnounce)
+            .putLong("cached_traffic_upload",trafficUpload)
+            .putLong("cached_traffic_download",trafficDownload)
+            .putLong("cached_traffic_total",trafficTotal)
+            .putLong("cached_subscription_expire",subscriptionExpire)
+            .putLong("cached_subscription_updated_at",System.currentTimeMillis())
+            .apply();
+        DebugLog.i(this,"SUBSCRIPTION","Метаданные сохранены в кэш: title="+(!subscriptionTitle.isEmpty())+
             "; announce="+(!subscriptionAnnounce.isEmpty())+"; userinfo="+(userInfo!=null));
     }
     private void showHelp() {
@@ -694,7 +761,7 @@ public class MainActivity extends Activity {
                     if(!parsed.isEmpty()) return parsed;
                 } catch(org.json.JSONException ignored) { /* Continue with link parsing. */ }
             }
-            for(String line:body.split("\\r?\\n")) {
+            for(String line:body.split("\\r?\n")) {
                 String candidate=line.trim();
                 int linkStart=candidate.indexOf("vless://");
                 if(linkStart>=0) {
