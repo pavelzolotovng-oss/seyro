@@ -264,7 +264,7 @@ public class MainActivity extends Activity {
             throw new IllegalArgumentException("Для подписки нужна ссылка HTTPS или HTTP.");
         java.net.HttpURLConnection conn=(java.net.HttpURLConnection)url.openConnection();
         conn.setConnectTimeout(12000); conn.setReadTimeout(15000); conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent","SEYRO-Lite/"+BuildConfig.VERSION_NAME);
+        conn.setRequestProperty("User-Agent","SEYRO-Lite/"+APP_VERSION);
         try {
             int code=conn.getResponseCode();
             if(code<200||code>=300) throw new IllegalStateException("Сервер подписки ответил HTTP "+code);
