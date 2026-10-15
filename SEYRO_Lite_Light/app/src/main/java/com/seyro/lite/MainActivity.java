@@ -301,6 +301,7 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Оставить",null)
                 .setPositiveButton("Удалить",(dialog,which)->{
                     profileLink="";
+                    clearCachedSubscriptionMetadata();
                     selectedConfig="";
                     activeTransport="";
                     availableProfiles.clear();
@@ -352,6 +353,7 @@ public class MainActivity extends Activity {
             profileLink=value;
             prefs.edit().putString("subscription_link",profileLink).apply();
             if(changed) {
+                clearCachedSubscriptionMetadata();
                 selectedConfig="";
                 activeTransport="";
                 availableProfiles.clear();
@@ -370,7 +372,11 @@ public class MainActivity extends Activity {
         return s.startsWith("https://")||s.startsWith("http://")||s.startsWith("vless://");
     }
     private void refreshProfileState() {
+        if(userGreeting!=null) userGreeting.setText(greetingText());
+        updateProfileSubscriptionState();
+        updateSubscriptionWidgets();
         renderVpnState();
+        if(!profileLink.isEmpty()) refreshSubscriptionMetadataInBackground();
     }
     private void showSettings() {
         String mode=prefs.getString("selection_mode","auto");
@@ -503,6 +509,24 @@ public class MainActivity extends Activity {
                 trafficProgressFill.setLayoutParams(p);
             }
         });
+    }
+
+    private void clearCachedSubscriptionMetadata() {
+        subscriptionTitle="";
+        subscriptionAnnounce="";
+        trafficUpload=-1;
+        trafficDownload=-1;
+        trafficTotal=-1;
+        subscriptionExpire=-1;
+        prefs.edit()
+            .remove("cached_subscription_title")
+            .remove("cached_subscription_announce")
+            .remove("cached_traffic_upload")
+            .remove("cached_traffic_download")
+            .remove("cached_traffic_total")
+            .remove("cached_subscription_expire")
+            .remove("cached_subscription_updated_at")
+            .apply();
     }
 
     private void loadCachedSubscriptionMetadata() {
