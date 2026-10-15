@@ -804,26 +804,36 @@ public class MainActivity extends Activity {
     private void showDebugLog() {
         String log=DebugLog.read(this);
         if(log.isEmpty()) log="Журнал пока пуст. Повторите подключение, затем откройте этот экран.";
+        // Match the settings card width and adapt the log viewport to the current
+        // screen height, leaving a stable header/footer in both auto and manual mode.
+        int screenHeight=getResources().getDisplayMetrics().heightPixels;
+        int logHeight=Math.max(dp(180),Math.min(dp(430),screenHeight-dp(360)));
         LinearLayout box=column();
-        padding(box,dp(18),dp(18),dp(18),dp(14));
-        box.setBackground(shape(white,dp(24),0));
-        TextView title=text("Журнал отладки",20,ink,true);
+        padding(box,dp(20),dp(18),dp(20),dp(16));
+        box.setBackground(shape(white,dp(26),0));
+        TextView icon=text("≡",22,white,true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(blue,dp(18),0));
+        LinearLayout.LayoutParams iconP=new LinearLayout.LayoutParams(dp(48),dp(48));
+        iconP.gravity=Gravity.CENTER_HORIZONTAL;
+        box.addView(icon,iconP);
+        TextView title=text("Журнал отладки",19,ink,true);
         title.setGravity(Gravity.CENTER);
-        add(box,title,dp(4));
+        add(box,title,dp(10));
         TextView subtitle=text("Диагностика подключения SEYRO",12,muted,false);
         subtitle.setGravity(Gravity.CENTER);
         add(box,subtitle,dp(8));
         TextView view=text(log,11,ink,false);
         view.setTextIsSelectable(true);
-        view.setPadding(dp(10),dp(10),dp(10),dp(10));
+        view.setPadding(dp(12),dp(12),dp(12),dp(12));
         view.setBackground(shape(0xfff5f8ff,dp(14),line));
         ScrollView scroll=new ScrollView(this);
         scroll.setFillViewport(false);
         scroll.setClipToPadding(false);
-        scroll.setPadding(0,dp(12),0,dp(4));
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setPadding(0,dp(12),0,dp(2));
         scroll.addView(view,new ScrollView.LayoutParams(-1,-2));
-        LinearLayout.LayoutParams scrollP=new LinearLayout.LayoutParams(-1,0,1);
-        scrollP.height=dp(430);
+        LinearLayout.LayoutParams scrollP=new LinearLayout.LayoutParams(-1,logHeight);
         box.addView(scroll,scrollP);
         LinearLayout buttons=new LinearLayout(this);
         buttons.setGravity(Gravity.CENTER);
@@ -850,8 +860,9 @@ public class MainActivity extends Activity {
         closeP.leftMargin=dp(6);
         buttons.addView(close,closeP);
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
-        // Settings remain underneath the debug log; do not dim the background twice.
-        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.0f));
+        // Use the same width/rounding as the settings card; a single light dim layer
+        // keeps the log distinct without creating a second bright panel underneath.
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.32f));
         share.setOnClickListener(v->{
             Intent intent=new Intent(Intent.ACTION_SEND).setType("text/plain")
                 .putExtra(Intent.EXTRA_SUBJECT,"SEYRO Lite — журнал отладки")
