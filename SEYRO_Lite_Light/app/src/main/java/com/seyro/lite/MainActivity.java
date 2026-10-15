@@ -380,27 +380,62 @@ public class MainActivity extends Activity {
     }
     private void showSettings() {
         String mode=prefs.getString("selection_mode","auto");
-        String[] choices={"Выбрать профиль подключения",
-            "Автоматический выбор"+("auto".equals(mode)?"  ✓":""),
-            "Ручной выбор"+("manual".equals(mode)?"  ✓":""),
-            "Обновлять профиль вручную","Журнал отладки"};
-        new AlertDialog.Builder(this).setTitle("Настройки подключения")
-            .setItems(choices,(dialog,which)->{
-                if(which==4) { showDebugLog(); return; }
-                if(which==0) { showProfileChoices(); return; }
-                if(which==1 || which==2) {
-                    String next=which==1?"auto":"manual";
+        boolean manual="manual".equals(mode);
+        java.util.ArrayList<String> items=new java.util.ArrayList<>();
+        java.util.ArrayList<String> actions=new java.util.ArrayList<>();
+
+        items.add(("auto".equals(mode)?"✓  ":"")+"Автоматический выбор");
+        actions.add("auto");
+        items.add(("manual".equals(mode)?"✓  ":"")+"Ручной выбор");
+        actions.add("manual");
+
+        // A specific transport can be selected only in manual mode.
+        if(manual) {
+            items.add("↳  Выбрать профиль подключения");
+            actions.add("choose_profile");
+        }
+        items.add("Обновить подписку");
+        actions.add("refresh");
+        items.add("Журнал отладки");
+        actions.add("debug");
+
+        TextView intro=text(manual
+            ?"Ручной режим: выберите TCP или XHTTP ниже."
+            :"Автоматический режим: приложение само выберет профиль.",13,muted,false);
+        intro.setPadding(dp(20),dp(4),dp(20),dp(12));
+        new AlertDialog.Builder(this)
+            .setTitle("Настройки подключения")
+            .setMessage(manual
+                ?"Ручной режим позволяет самостоятельно выбрать транспорт подключения."
+                :"В автоматическом режиме используется первый доступный профиль подписки.")
+            .setItems(items.toArray(new String[0]),(dialog,which)->{
+                String action=actions.get(which);
+                if("debug".equals(action)) { showDebugLog(); return; }
+                if("choose_profile".equals(action)) { showProfileChoices(); return; }
+                if("auto".equals(action) || "manual".equals(action)) {
+                    String next=action;
+                    boolean changed=!next.equals(prefs.getString("selection_mode","auto"));
                     prefs.edit().putString("selection_mode",next).apply();
                     updateProtocolBadge();
-                    new AlertDialog.Builder(this).setTitle("Режим выбора профиля")
-                        .setMessage("Выбран режим: "+("auto".equals(next)?"Автоматический. Приложение выберет первый доступный профиль из подписки.":"Ручной. Перед подключением можно выбрать TCP или XHTTP."))
-                        .setPositiveButton("Понятно",null).show();
+                    if(changed) {
+                        Toast.makeText(this,next.equals("auto")
+                            ?"Включён автоматический выбор"
+                            :"Включён ручной выбор профиля",Toast.LENGTH_SHORT).show();
+                    }
+                    // Reopen the menu so the manual-only profile item appears/disappears immediately.
+                    showSettings();
                     return;
                 }
-                new AlertDialog.Builder(this).setTitle("Обновление профиля")
-                    .setMessage("Профиль будет повторно загружен при следующем подключении.")
-                    .setPositiveButton("Понятно",null).show();
-            }).setNegativeButton("Закрыть",null).setPositiveButton("Ссылка профиля",(d,w)->showProfile()).show();
+                if("refresh".equals(action)) {
+                    refreshSubscriptionMetadataInBackground();
+                    new AlertDialog.Builder(this).setTitle("Обновление подписки")
+                        .setMessage("Запрошено обновление данных подписки. Список профилей будет обновлён при следующем подключении.")
+                        .setPositiveButton("Понятно",null).show();
+                }
+            })
+            .setNegativeButton("Закрыть",null)
+            .setPositiveButton("Ссылка профиля",(d,w)->showProfile())
+            .show();
     }
     private void showProfileChoices() {
         if(!"disconnected".equals(SeyroVpnService.vpnState)) {
