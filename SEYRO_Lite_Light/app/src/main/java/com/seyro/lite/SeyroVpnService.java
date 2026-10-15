@@ -14,6 +14,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+import hev.htproxy.TProxyService;
 import android.util.Log;
 import libv2ray.CoreCallbackHandler;
 import libv2ray.CoreController;
@@ -38,6 +42,8 @@ public class SeyroVpnService extends VpnService {
     private ScheduledFuture<?> probeTask;
     private ParcelFileDescriptor tun;
     private CoreController controller;
+    private boolean hevStarted = false;
+    private File hevConfigFile;
 
     private final CoreCallbackHandler callback = new CoreCallbackHandler() {
         @Override public long startup() { DebugLog.i(SeyroVpnService.this,"XRAY","Core callback startup"); return 0L; }
@@ -140,6 +146,8 @@ public class SeyroVpnService extends VpnService {
             .addRoute("0.0.0.0", 0)
             .addDnsServer("1.1.1.1")
             .addDnsServer("9.9.9.9");
+        // Keep this app's own Xray sockets outside its VPN to prevent a routing loop.
+        builder.addDisallowedApplication(getPackageName());
         tun = builder.establish();
         if (tun == null) throw new IllegalStateException("Android did not establish the VPN interface");
         DebugLog.i(this,"VPN","TUN-интерфейс создан; fd доступен; MTU=1400; IPv4 default route и DNS заданы");
@@ -147,15 +155,58 @@ public class SeyroVpnService extends VpnService {
         // AndroidLibXrayLite requires an XUDP BaseKey of exactly 32 bytes.
         Libv2ray.initCoreEnv(getFilesDir().getAbsolutePath(), "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY");
         controller = Libv2ray.newCoreController(callback);
-        // Diagnostic only: Xray owns packet processing through StartLoop.
-        // Do not read from the TUN descriptor here, as that would steal packets.
-        DebugLog.i(this,"XRAY","Запуск Xray StartLoop; Android TUN fd передаётся в libv2ray; MTU=1400; конфигурация и секреты не записываются");
-        DebugLog.i(this,"DIAG","TUN fd="+tun.getFd()+"; native TUN inbound expected; Java API has no packet counter");
-        controller.startLoop(config, tun.getFd());
+        // Xray exposes a loopback SOCKS inbound. HEV consumes the Android TUN fd and
+        // forwards TCP/UDP packets to that SOCKS inbound (tun2socks architecture).
+        DebugLog.i(this,"XRAY","Запуск Xray с локальным SOCKS inbound 127.0.0.1:10808; TUN fd обслуживает HEV");
+        controller.startLoop(config, 0); // 0 tells AndroidLibXrayLite not to attach the fd to Xray TUN.
         DebugLog.i(this,"XRAY","StartLoop вернулся; isRunning="+controller.getIsRunning());
         if (!controller.getIsRunning()) throw new IllegalStateException("Xray core did not start");
+        waitForLocalSocks(8000);
+        startHevTunnel();
         startTrafficDiagnostics();
         Log.i(TAG, "VPN interface and Xray core started");
+    }
+
+    private void waitForLocalSocks(long timeoutMs) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        Exception last = null;
+        while (System.currentTimeMillis() < deadline) {
+            try (java.net.Socket socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress("127.0.0.1", 10808), 400);
+                DebugLog.i(this, "SOCKS", "Локальный SOCKS inbound доступен на 127.0.0.1:10808");
+                return;
+            } catch (Exception e) {
+                last = e;
+                Thread.sleep(150);
+            }
+        }
+        throw new IllegalStateException("Xray SOCKS inbound 127.0.0.1:10808 недоступен", last);
+    }
+
+    private void startHevTunnel() throws Exception {
+        if (!TProxyService.isLibraryLoaded()) {
+            Throwable loadError = TProxyService.getLibraryLoadError();
+            throw new IllegalStateException("Не удалось загрузить native-библиотеку HEV", loadError);
+        }
+        String yaml = "tunnel:\n"
+            + "  name: seyro\n"
+            + "  mtu: 1400\n"
+            + "  ipv4: 10.77.0.1\n"
+            + "socks5:\n"
+            + "  address: 127.0.0.1\n"
+            + "  port: 10808\n"
+            + "  udp: 'udp'\n";
+        hevConfigFile = new File(getFilesDir(), "hev-socks5-tunnel.yml");
+        try (FileOutputStream out = new FileOutputStream(hevConfigFile, false)) {
+            out.write(yaml.getBytes(StandardCharsets.UTF_8));
+            out.getFD().sync();
+        }
+        DebugLog.i(this, "HEV", "Запуск hev-socks5-tunnel; TUN fd=" + tun.getFd() + "; SOCKS=127.0.0.1:10808");
+        boolean started = TProxyService.TProxyStartService(hevConfigFile.getAbsolutePath(), tun.getFd());
+        if (!started) throw new IllegalStateException("hev-socks5-tunnel не запустился (TProxyStartService=false)");
+        hevStarted = true;
+        if (!TProxyService.TProxyIsRunning()) throw new IllegalStateException("hev-socks5-tunnel не подтвердил запуск");
+        DebugLog.i(this, "HEV", "hev-socks5-tunnel запущен; TUN пакеты направляются в Xray SOCKS");
     }
 
     private void startTrafficDiagnostics() {
@@ -167,6 +218,12 @@ public class SeyroVpnService extends VpnService {
             try {
                 String traffic = current.queryAllOutboundTrafficStats();
                 DebugLog.i(this, "TRAFFIC", traffic == null || traffic.isEmpty() ? "outbound counters empty" : "outbound counters: " + traffic);
+                if (hevStarted && TProxyService.TProxyIsRunning()) {
+                    long[] stats = TProxyService.TProxyGetStats();
+                    if (stats != null && stats.length >= 4) {
+                        DebugLog.i(this, "HEV_STATS", "txPackets=" + stats[0] + "; txBytes=" + stats[1] + "; rxPackets=" + stats[2] + "; rxBytes=" + stats[3]);
+                    }
+                }
             } catch (Exception e) {
                 DebugLog.w(this, "TRAFFIC", "counter read failed: " + e.getClass().getSimpleName());
             }
@@ -193,7 +250,16 @@ public class SeyroVpnService extends VpnService {
     private void stopVpn() {
         if (diagnosticsTask != null) { diagnosticsTask.cancel(true); diagnosticsTask = null; }
         if (probeTask != null) { probeTask.cancel(true); probeTask = null; }
-        DebugLog.i(this,"VPN","Остановка ядра/закрытие TUN");
+        DebugLog.i(this,"VPN","Остановка HEV/Xray и закрытие TUN");
+        if (hevStarted) {
+            try {
+                boolean stopped = TProxyService.TProxyStopService();
+                DebugLog.i(this, "HEV", "Остановка hev-socks5-tunnel; result=" + stopped);
+            } catch (Throwable e) {
+                DebugLog.w(this, "HEV", "Ошибка остановки HEV: " + e.getClass().getSimpleName());
+            }
+            hevStarted = false;
+        }
         try {
             if (controller != null) controller.stopLoop();
         } catch (Exception e) {
