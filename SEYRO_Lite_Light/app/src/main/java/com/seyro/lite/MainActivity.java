@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
     private static final int VPN_PERMISSION_REQUEST=71;
     private static final String APP_VERSION=BuildConfig.VERSION_NAME;
     private boolean vpnStateReceiverRegistered=false;
+    private AlertDialog settingsDialog;
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) { renderVpnState(); }
     };
@@ -466,7 +467,9 @@ public class MainActivity extends Activity {
         actions.addView(profile,profileP);
 
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        settingsDialog=dialog;
         dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        dialog.setOnDismissListener(ignored->{if(settingsDialog==dialog)settingsDialog=null;});
         close.setOnClickListener(v->dialog.dismiss());
         profile.setOnClickListener(v->{dialog.dismiss();showProfile();});
         dialog.show();
@@ -517,7 +520,8 @@ public class MainActivity extends Activity {
                 ?"Включён автоматический выбор"
                 :"Включён ручной выбор профиля",Toast.LENGTH_SHORT).show();
         }
-        showSettings();
+        if(settingsDialog!=null && settingsDialog.isShowing()) settingsDialog.dismiss();
+        new android.os.Handler(getMainLooper()).postDelayed(this::showSettings,120);
     }
 
     private void styleCustomDialog(AlertDialog dialog,float dimAmount) {
