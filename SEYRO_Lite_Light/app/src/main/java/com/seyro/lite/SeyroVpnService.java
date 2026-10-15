@@ -33,7 +33,9 @@ public class SeyroVpnService extends VpnService {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService vpnExecutor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService diagnosticsExecutor = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService probeExecutor = Executors.newSingleThreadScheduledExecutor();
     private ScheduledFuture<?> diagnosticsTask;
+    private ScheduledFuture<?> probeTask;
     private ParcelFileDescriptor tun;
     private CoreController controller;
 
@@ -158,6 +160,7 @@ public class SeyroVpnService extends VpnService {
 
     private void startTrafficDiagnostics() {
         if (diagnosticsTask != null) diagnosticsTask.cancel(true);
+        if (probeTask != null) probeTask.cancel(true);
         diagnosticsTask = diagnosticsExecutor.scheduleWithFixedDelay(() -> {
             CoreController current = controller;
             if (current == null || !current.getIsRunning()) return;
@@ -168,10 +171,24 @@ public class SeyroVpnService extends VpnService {
                 DebugLog.w(this, "TRAFFIC", "counter read failed: " + e.getClass().getSimpleName());
             }
         }, 3, 10, TimeUnit.SECONDS);
+        // Active outbound probe uses Xray's own dialer and does not depend on Android TUN packet delivery.
+        probeTask = probeExecutor.scheduleWithFixedDelay(() -> {
+            CoreController current = controller;
+            if (current == null || !current.getIsRunning()) return;
+            long startedAt = System.currentTimeMillis();
+            try {
+                long delay = current.measureDelay("https://www.google.com/generate_204");
+                long elapsed = System.currentTimeMillis() - startedAt;
+                DebugLog.i(this, "PROBE", "Xray outbound HTTP probe result=" + delay + " ms; elapsed=" + elapsed + " ms; target=generate_204");
+            } catch (Exception e) {
+                DebugLog.w(this, "PROBE", "Xray outbound HTTP probe failed: " + e.getClass().getSimpleName() + "; elapsed=" + (System.currentTimeMillis() - startedAt) + " ms");
+            }
+        }, 5, 30, TimeUnit.SECONDS);
     }
 
     private void stopVpn() {
         if (diagnosticsTask != null) { diagnosticsTask.cancel(true); diagnosticsTask = null; }
+        if (probeTask != null) { probeTask.cancel(true); probeTask = null; }
         DebugLog.i(this,"VPN","Остановка ядра/закрытие TUN");
         try {
             if (controller != null) controller.stopLoop();
@@ -196,6 +213,7 @@ public class SeyroVpnService extends VpnService {
         DebugLog.i(this,"SERVICE","Служба уничтожается");
         vpnExecutor.shutdownNow();
         diagnosticsExecutor.shutdownNow();
+        probeExecutor.shutdownNow();
         stopVpn();
         stopForeground(true);
         super.onDestroy();
