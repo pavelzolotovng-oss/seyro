@@ -38,7 +38,7 @@ public class MainActivity extends Activity {
     private boolean demoOn=false;
     private String selectedConfig="";
     private static final int VPN_PERMISSION_REQUEST=71;
-    private static final String APP_VERSION="0.5-light";
+    private static final String APP_VERSION="0.6-light";
     private boolean vpnStateReceiverRegistered=false;
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) { renderVpnState(); }
@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
     }
     private LinearLayout column() { LinearLayout l=new LinearLayout(this); l.setOrientation(1); return l; }
     private void padding(View v,int l,int t,int r,int b) { v.setPadding(l,t,r,b); }
+    private int dp(float value) { return (int)(value * getResources().getDisplayMetrics().density + 0.5f); }
     private LinearLayout card() {
         LinearLayout l=column(); padding(l,16,15,16,15);
         l.setBackground(shape(white,20,line)); return l;
@@ -78,7 +79,7 @@ public class MainActivity extends Activity {
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false); scroll.setBackgroundColor(bg);
-        LinearLayout root=column(); padding(root,18,76,18,28); scroll.addView(root);
+        LinearLayout root=column(); padding(root,18,dp(92),18,28); scroll.addView(root);
 
         LinearLayout header=new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         TextView mark=text("S",25,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(blue,17,0));
@@ -86,8 +87,13 @@ public class MainActivity extends Activity {
         LinearLayout brand=column(); TextView name=text("SEYRO",23,ink,true); name.setLetterSpacing(.07f); brand.addView(name);
         TextView tagline=text("LITE VPN",9,blue,true); tagline.setLetterSpacing(.18f); brand.addView(tagline);
         LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,-2,1); bp.leftMargin=11; header.addView(brand,bp);
-        TextView settings=text("⚙",22,ink,true); settings.setGravity(Gravity.CENTER);
-        header.addView(settings,new LinearLayout.LayoutParams(42,42)); settings.setOnClickListener(v->showSettings());
+        TextView settings=text("⚙",28,blue,true); settings.setGravity(Gravity.CENTER);
+        settings.setContentDescription("Настройки");
+        settings.setBackground(shape(paleBlue,16,blue));
+        settings.setElevation(2f);
+        LinearLayout.LayoutParams settingsP=new LinearLayout.LayoutParams(dp(48),dp(48));
+        settingsP.leftMargin=dp(8);
+        header.addView(settings,settingsP); settings.setOnClickListener(v->showSettings());
         root.addView(header);
 
         add(root,text("ВАШ ЛИЧНЫЙ VPN",10,blue,true),28);
@@ -398,7 +404,7 @@ public class MainActivity extends Activity {
             .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy")));
         JSONObject inbound=new JSONObject().put("tag","tun-in").put("port",0)
             .put("protocol","tun").put("settings",new JSONObject().put("name","seyro").put("MTU",1500));
-        return new JSONObject().put("log",new JSONObject().put("loglevel","warning"))
+        return new JSONObject().put("log",new JSONObject().put("loglevel","debug"))
             .put("inbounds",new JSONArray().put(inbound)).put("outbounds",outbounds).put("routing",routing).toString();
     }
 
