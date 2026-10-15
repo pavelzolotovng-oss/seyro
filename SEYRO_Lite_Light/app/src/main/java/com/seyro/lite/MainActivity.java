@@ -685,8 +685,14 @@ public class MainActivity extends Activity {
         LinearLayout list=column();
         add(box,list,dp(14));
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        String persistedTransport=prefs.getString("selected_transport","");
         for(ProfileOption option:profiles) {
-            boolean selected=selectedConfig.equals(option.config);
+            // On a fresh app launch selectedConfig is empty until Connect is pressed.
+            // The saved transport is the source of truth for the picker in that case.
+            boolean selected=!selectedConfig.isEmpty()
+                ? selectedConfig.equals(option.config)
+                : (!activeTransport.isEmpty() && activeTransport.equalsIgnoreCase(option.transport))
+                    || (!persistedTransport.isEmpty() && persistedTransport.equalsIgnoreCase(option.transport));
             String transport=option.transport.toUpperCase(java.util.Locale.ROOT);
             LinearLayout item=rowCard(option.label,transport+(selected?" · выбран":""),
                 selected?"✓":"›",selected);
