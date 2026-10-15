@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
         super.onCreate(stateBundle);
         prefs=getSharedPreferences("seyro_profile",MODE_PRIVATE);
         profileLink=prefs.getString("subscription_link","");
+        DebugLog.i(this,"APP","Запуск приложения; VPN state="+SeyroVpnService.vpnState);
         Window w=getWindow();
         w.setStatusBarColor(0xfff3f7ff); w.setNavigationBarColor(0xfff3f7ff);
         w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -197,7 +198,9 @@ public class MainActivity extends Activity {
                         .setMessage("Поддерживаются ссылки https://, http:// и отдельные профили vless://.")
                         .setPositiveButton("OK",null).show(); return;
                 }
-                profileLink=value; prefs.edit().putString("subscription_link",profileLink).apply(); refreshProfileState();
+                profileLink=value; prefs.edit().putString("subscription_link",profileLink).apply();
+                selectedConfig=""; DebugLog.i(this,"PROFILE","Ссылка подписки "+(profileLink.isEmpty()?"удалена":"сохранена; значение скрыто"));
+                refreshProfileState();
             }).show();
     }
     private boolean validLink(String value) {
@@ -208,15 +211,28 @@ public class MainActivity extends Activity {
         renderVpnState();
     }
     private void showSettings() {
-        String[] choices={"Автоматический выбор","VLESS + REALITY","Обновлять профиль вручную"};
+        String[] choices={"Автоматический выбор","VLESS + REALITY","Обновлять профиль вручную","Журнал отладки"};
         new AlertDialog.Builder(this).setTitle("Настройки подключения")
             .setItems(choices,(dialog,which)->{
+                if(which==3) { showDebugLog(); return; }
                 String message;
                 if(which==0) message="Маршрут будет выбран автоматически сервером SEYRO.";
                 else if(which==1) message="Используется профиль VLESS + REALITY, если он указан в вашей подписке.";
                 else message="Ссылка сохранена локально. Обновление с сервера появится после подключения API.";
                 new AlertDialog.Builder(this).setTitle(choices[which]).setMessage(message).setPositiveButton("Понятно",null).show();
             }).setNegativeButton("Закрыть",null).setPositiveButton("Ссылка профиля",(d,w)->showProfile()).show();
+    }
+    private void showDebugLog() {
+        String log=DebugLog.read(this);
+        if(log.isEmpty()) log="Журнал пока пуст. Повторите подключение, затем откройте этот экран.";
+        TextView view=text(log,11,ink,false); view.setTextIsSelectable(true); view.setPadding(18,12,18,12);
+        ScrollView scroll=new ScrollView(this); scroll.addView(view);
+        new AlertDialog.Builder(this).setTitle("Журнал отладки")
+            .setView(scroll).setNeutralButton("Поделиться",(d,w)->{
+                Intent share=new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT,"SEYRO Lite — журнал отладки").putExtra(Intent.EXTRA_TEXT,DebugLog.read(this));
+                startActivity(Intent.createChooser(share,"Отправить журнал"));
+            }).setNegativeButton("Очистить",(d,w)->DebugLog.clear(this))
+            .setPositiveButton("Закрыть",null).show();
     }
     private void showSubscription() {
         new AlertDialog.Builder(this).setTitle("Моя подписка")
@@ -229,6 +245,7 @@ public class MainActivity extends Activity {
             .setPositiveButton("Понятно",null).show();
     }
     private void onConnect() {
+        DebugLog.i(this,"UI","Нажата кнопка подключения; state="+SeyroVpnService.vpnState);
         if("connected".equals(SeyroVpnService.vpnState)) {
             connect.setEnabled(false); connect.setText("Отключаемся…");
             Intent stop=new Intent(this,SeyroVpnService.class); stop.setAction(SeyroVpnService.ACTION_STOP); startService(stop);
@@ -241,7 +258,7 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             String error=null, config=null;
             try { config=fetchAndBuildConfig(profileLink); }
-            catch(Exception e) { error=e.getMessage()==null?"Не удалось прочитать подписку":e.getMessage(); }
+            catch(Exception e) { error=e.getMessage()==null?"Не удалось прочитать подписку":e.getMessage(); DebugLog.e(this,"SUBSCRIPTION","Ошибка загрузки/разбора: "+e.getClass().getSimpleName()+": "+error); }
             final String result=config, problem=error;
             runOnUiThread(() -> {
                 connect.setEnabled(true); connect.setText("Подключить");
@@ -252,6 +269,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 selectedConfig=result;
+                DebugLog.i(this,"SUBSCRIPTION","Конфигурация собрана; длина="+result.length()+" символов; содержимое не записывается");
                 hint.setText("Профиль загружен. Нажмите «Подключить» для запуска VPN.");
                 requestVpnPermissionAndStart();
             });
@@ -259,6 +277,7 @@ public class MainActivity extends Activity {
     }
 
     private String fetchAndBuildConfig(String link) throws Exception {
+        DebugLog.i(this,"SUBSCRIPTION","Начата загрузка профиля; ссылка скрыта");
         URL url=new URL(link);
         if(!"https".equalsIgnoreCase(url.getProtocol()) && !"http".equalsIgnoreCase(url.getProtocol()))
             throw new IllegalArgumentException("Для подписки нужна ссылка HTTPS или HTTP.");
@@ -267,12 +286,14 @@ public class MainActivity extends Activity {
         conn.setRequestProperty("User-Agent","SEYRO-Lite/"+APP_VERSION);
         try {
             int code=conn.getResponseCode();
+            DebugLog.i(this,"SUBSCRIPTION","HTTP статус="+code+"; тип ответа="+conn.getContentType());
             if(code<200||code>=300) throw new IllegalStateException("Сервер подписки ответил HTTP "+code);
             ByteArrayOutputStream out=new ByteArrayOutputStream();
             try(InputStream in=conn.getInputStream()) {
                 byte[] buf=new byte[4096]; int n; while((n=in.read(buf))!=-1) { out.write(buf,0,n); if(out.size()>2_000_000) throw new IllegalStateException("Ответ подписки слишком большой"); }
             }
             String body=new String(out.toByteArray(),StandardCharsets.UTF_8).trim();
+            DebugLog.i(this,"SUBSCRIPTION","Ответ получен; байт="+out.size()+"; начало формата="+(body.startsWith("[")?"JSON-массив":body.startsWith("{")?"JSON-объект":body.startsWith("vless://")?"VLESS":"другой/Base64"));
             // Some providers return a JSON array of complete Xray profiles instead of vless:// links.
             if(body.startsWith("[") || body.startsWith("{")) {
                 try {
@@ -426,20 +447,22 @@ public class MainActivity extends Activity {
     }
 
     private void requestVpnPermissionAndStart() {
+        DebugLog.i(this,"VPN","Проверка разрешения Android VPN");
         Intent permission=VpnService.prepare(this);
-        if(permission!=null) { startActivityForResult(permission,VPN_PERMISSION_REQUEST); return; }
+        if(permission!=null) { DebugLog.i(this,"VPN","Запрошено разрешение Android VPN"); startActivityForResult(permission,VPN_PERMISSION_REQUEST); return; }
         startVpnService();
     }
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data) {
         super.onActivityResult(requestCode,resultCode,data);
         if(requestCode==VPN_PERMISSION_REQUEST) {
-            if(resultCode==RESULT_OK) startVpnService();
-            else new AlertDialog.Builder(this).setTitle("Нужно разрешение VPN")
+            if(resultCode==RESULT_OK) { DebugLog.i(this,"VPN","Разрешение Android VPN получено"); startVpnService(); }
+            else { DebugLog.w(this,"VPN","Пользователь отклонил разрешение Android VPN"); new AlertDialog.Builder(this).setTitle("Нужно разрешение VPN")
                 .setMessage("Android не разрешил создать VPN-туннель. Подключение не запущено.")
-                .setPositiveButton("Понятно",null).show();
+                .setPositiveButton("Понятно",null).show(); }
         }
     }
     private void startVpnService() {
+        DebugLog.i(this,"VPN","Отправлена команда запуска службы; конфигурация не записывается");
         status.setText("●  ПОДКЛЮЧАЕМСЯ"); status.setTextColor(blue);
         connect.setText("Подождите…"); connect.setEnabled(false);
         hint.setText("Запускаем защищённый туннель…");
