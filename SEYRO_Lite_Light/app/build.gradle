@@ -5,6 +5,7 @@ plugins { id 'com.android.application' }
 def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '13').toInteger()
 android {
     namespace 'com.seyro.lite'
+    buildFeatures { buildConfig true }
     compileSdk 35
     defaultConfig {
         applicationId 'com.seyro.lite'
