@@ -122,7 +122,7 @@ public class MainActivity extends Activity {
         pair.addView(help,hp2); help.setOnClickListener(v->showHelp());
         help.addView(text("НУЖНА ПОМОЩЬ?",10,muted,true)); add(help,text("Поддержка  ›",14,blue,true),7);
 
-        TextView footer=text("SEYRO LITE  ·  ЗАЩИЩЁННЫЙ ДОСТУП",9,0xff93a0b5,true);
+        TextView footer=text("SEYRO LITE  ·  ВЕРСИЯ "+BuildConfig.VERSION_NAME,10,0xff93a0b5,true);
         footer.setGravity(Gravity.CENTER); add(root,footer,20);
         setContentView(scroll);
         renderVpnState();
@@ -263,7 +263,7 @@ public class MainActivity extends Activity {
             throw new IllegalArgumentException("Для подписки нужна ссылка HTTPS или HTTP.");
         java.net.HttpURLConnection conn=(java.net.HttpURLConnection)url.openConnection();
         conn.setConnectTimeout(12000); conn.setReadTimeout(15000); conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent","SEYRO-Lite/0.4");
+        conn.setRequestProperty("User-Agent","SEYRO-Lite/"+BuildConfig.VERSION_NAME);
         try {
             int code=conn.getResponseCode();
             if(code<200||code>=300) throw new IllegalStateException("Сервер подписки ответил HTTP "+code);
