@@ -441,7 +441,7 @@ public class MainActivity extends Activity {
             "Обновить сведения о сроке и трафике","↻",false);
         add(options,refresh,dp(8));
         refresh.setOnClickListener(v->{
-            refreshSubscriptionMetadataInBackground();
+            refreshSubscriptionMetadataInBackground(true);
             showSimpleStyledNotice("Обновление подписки",
                 "Запрошено обновление данных подписки.");
         });
@@ -962,12 +962,16 @@ public class MainActivity extends Activity {
     private volatile boolean subscriptionRefreshInProgress=false;
     private long lastSubscriptionRefreshAt=0L;
 
-    private synchronized void refreshSubscriptionMetadataInBackground() {
+    private void refreshSubscriptionMetadataInBackground() {
+        refreshSubscriptionMetadataInBackground(false);
+    }
+
+    private synchronized void refreshSubscriptionMetadataInBackground(boolean force) {
         final String link=profileLink;
         long now=System.currentTimeMillis();
         // Lifecycle callbacks can fire back-to-back (create/start/resume). Do not
-        // issue duplicate subscription requests; manual refresh remains available.
-        if(subscriptionRefreshInProgress || (now-lastSubscriptionRefreshAt)<30000L) return;
+        // issue duplicate requests; an explicit tap on "Обновить подписку" bypasses the cooldown.
+        if(subscriptionRefreshInProgress || (!force && (now-lastSubscriptionRefreshAt)<30000L)) return;
         subscriptionRefreshInProgress=true;
         lastSubscriptionRefreshAt=now;
         new Thread(() -> {
