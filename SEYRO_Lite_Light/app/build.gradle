@@ -6,8 +6,21 @@ android {
         applicationId 'com.seyro.lite'
         minSdk 29
         targetSdk 35
-        versionCode 7
-        versionName '0.7-light'
+        versionCode 12
+        versionName '0.7.12'
+    }
+    signingConfigs {
+        stable {
+            storeFile file(System.getenv('ANDROID_KEYSTORE_PATH') ?: 'seyro-release.jks')
+            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            keyAlias System.getenv('ANDROID_KEY_ALIAS')
+            keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.stable
+        }
     }
 }
 dependencies {
