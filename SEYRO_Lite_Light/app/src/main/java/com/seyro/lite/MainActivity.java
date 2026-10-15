@@ -442,9 +442,8 @@ public class MainActivity extends Activity {
         add(options,refresh,dp(8));
         refresh.setOnClickListener(v->{
             refreshSubscriptionMetadataInBackground();
-            new AlertDialog.Builder(this).setTitle("Обновление подписки")
-                .setMessage("Запрошено обновление данных подписки.")
-                .setPositiveButton("Понятно",null).show();
+            showSimpleStyledNotice("Обновление подписки",
+                "Запрошено обновление данных подписки.");
         });
 
         LinearLayout debug=rowCard("Журнал отладки",
@@ -805,14 +804,66 @@ public class MainActivity extends Activity {
     private void showDebugLog() {
         String log=DebugLog.read(this);
         if(log.isEmpty()) log="Журнал пока пуст. Повторите подключение, затем откройте этот экран.";
-        TextView view=text(log,11,ink,false); view.setTextIsSelectable(true); view.setPadding(18,12,18,12);
-        ScrollView scroll=new ScrollView(this); scroll.addView(view);
-        new AlertDialog.Builder(this).setTitle("Журнал отладки")
-            .setView(scroll).setNeutralButton("Поделиться",(d,w)->{
-                Intent share=new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT,"SEYRO Lite — журнал отладки").putExtra(Intent.EXTRA_TEXT,DebugLog.read(this));
-                startActivity(Intent.createChooser(share,"Отправить журнал"));
-            }).setNegativeButton("Очистить",(d,w)->DebugLog.clear(this))
-            .setPositiveButton("Закрыть",null).show();
+        LinearLayout box=column();
+        padding(box,dp(18),dp(18),dp(18),dp(14));
+        box.setBackground(shape(white,dp(24),0));
+        TextView title=text("Журнал отладки",20,ink,true);
+        title.setGravity(Gravity.CENTER);
+        add(box,title,dp(4));
+        TextView subtitle=text("Диагностика подключения SEYRO",12,muted,false);
+        subtitle.setGravity(Gravity.CENTER);
+        add(box,subtitle,dp(8));
+        TextView view=text(log,11,ink,false);
+        view.setTextIsSelectable(true);
+        view.setPadding(dp(10),dp(10),dp(10),dp(10));
+        view.setBackground(shape(0xfff5f8ff,dp(14),line));
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.setPadding(0,dp(12),0,dp(4));
+        scroll.addView(view,new ScrollView.LayoutParams(-1,-2));
+        LinearLayout.LayoutParams scrollP=new LinearLayout.LayoutParams(-1,0,1);
+        scrollP.height=dp(430);
+        box.addView(scroll,scrollP);
+        LinearLayout buttons=new LinearLayout(this);
+        buttons.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams buttonsP=new LinearLayout.LayoutParams(-1,-2);
+        buttonsP.topMargin=dp(12);
+        box.addView(buttons,buttonsP);
+        TextView share=text("Поделиться",12,blue,true);
+        share.setGravity(Gravity.CENTER);
+        share.setBackground(shape(paleBlue,dp(13),0));
+        padding(share,dp(8),dp(12),dp(8),dp(12));
+        buttons.addView(share,new LinearLayout.LayoutParams(0,-2,1));
+        TextView clear=text("Очистить",12,blue,true);
+        clear.setGravity(Gravity.CENTER);
+        clear.setBackground(shape(paleBlue,dp(13),0));
+        padding(clear,dp(8),dp(12),dp(8),dp(12));
+        LinearLayout.LayoutParams clearP=new LinearLayout.LayoutParams(0,-2,1);
+        clearP.leftMargin=dp(6);
+        buttons.addView(clear,clearP);
+        TextView close=text("Закрыть",12,white,true);
+        close.setGravity(Gravity.CENTER);
+        close.setBackground(shape(blue,dp(13),0));
+        padding(close,dp(8),dp(12),dp(8),dp(12));
+        LinearLayout.LayoutParams closeP=new LinearLayout.LayoutParams(0,-2,1);
+        closeP.leftMargin=dp(6);
+        buttons.addView(close,closeP);
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        share.setOnClickListener(v->{
+            Intent intent=new Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_SUBJECT,"SEYRO Lite — журнал отладки")
+                .putExtra(Intent.EXTRA_TEXT,DebugLog.read(this));
+            startActivity(Intent.createChooser(intent,"Отправить журнал"));
+        });
+        clear.setOnClickListener(v->{
+            DebugLog.clear(this);
+            dialog.dismiss();
+            Toast.makeText(this,"Журнал очищен",Toast.LENGTH_SHORT).show();
+        });
+        close.setOnClickListener(v->dialog.dismiss());
+        dialog.show();
     }
     private void showSubscription() {
         StringBuilder info=new StringBuilder();
