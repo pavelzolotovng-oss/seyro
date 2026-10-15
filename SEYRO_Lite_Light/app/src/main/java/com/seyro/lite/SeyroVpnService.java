@@ -140,7 +140,10 @@ public class SeyroVpnService extends VpnService {
         // AndroidLibXrayLite requires an XUDP BaseKey of exactly 32 bytes.
         Libv2ray.initCoreEnv(getFilesDir().getAbsolutePath(), "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY");
         controller = Libv2ray.newCoreController(callback);
+        // Diagnostic only: Xray owns packet processing through StartLoop.
+        // Do not read from the TUN descriptor here, as that would steal packets.
         DebugLog.i(this,"XRAY","Запуск Xray StartLoop; Android TUN fd передаётся в libv2ray; MTU=1400; конфигурация и секреты не записываются");
+        DebugLog.i(this,"DIAG","TUN fd="+tun.getFd()+"; native TUN inbound expected; Java API has no packet counter");
         controller.startLoop(config, tun.getFd());
         DebugLog.i(this,"XRAY","StartLoop вернулся; isRunning="+controller.getIsRunning());
         if (!controller.getIsRunning()) throw new IllegalStateException("Xray core did not start");
