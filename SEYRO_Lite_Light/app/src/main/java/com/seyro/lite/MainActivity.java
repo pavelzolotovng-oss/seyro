@@ -711,7 +711,9 @@ public class MainActivity extends Activity {
         cancel.setBackground(shape(paleBlue,dp(14),0));
         padding(cancel,dp(10),dp(12),dp(10),dp(12));
         buttons.addView(cancel,new LinearLayout.LayoutParams(-1,-2));
-        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        // The picker is shown above the still-open settings card. Avoid applying
+        // a second dim layer, which looks like the whole menu jumps/darkens.
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.0f));
         cancel.setOnClickListener(v->dialog.dismiss());
         dialog.show();
     }
@@ -853,7 +855,8 @@ public class MainActivity extends Activity {
         closeP.leftMargin=dp(6);
         buttons.addView(close,closeP);
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
-        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        // Settings remain underneath the debug log; do not dim the background twice.
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.0f));
         share.setOnClickListener(v->{
             Intent intent=new Intent(Intent.ACTION_SEND).setType("text/plain")
                 .putExtra(Intent.EXTRA_SUBJECT,"SEYRO Lite — журнал отладки")
