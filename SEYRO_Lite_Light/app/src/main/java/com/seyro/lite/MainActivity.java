@@ -460,26 +460,12 @@ public class MainActivity extends Activity {
         if(sourceReality==null||sourceReality.optString("publicKey").isEmpty())
             throw new IllegalArgumentException("В профиле REALITY отсутствует публичный ключ.");
 
-        JSONObject user=new JSONObject().put("id",sourceUser.optString("id"))
-            .put("encryption",sourceUser.optString("encryption","none"));
-        if(!sourceUser.optString("flow").isEmpty()) user.put("flow",sourceUser.optString("flow"));
-        JSONObject vnext=new JSONObject().put("address",sourceVnext.optString("address"))
-            .put("port",sourceVnext.optInt("port")).put("users",new JSONArray().put(user));
-        JSONObject settings=new JSONObject().put("vnext",new JSONArray().put(vnext));
-        JSONObject reality=new JSONObject().put("serverName",sourceReality.optString("serverName",sourceVnext.optString("address")))
-            .put("fingerprint",sourceReality.optString("fingerprint","chrome"))
-            .put("publicKey",sourceReality.optString("publicKey"))
-            .put("shortId",sourceReality.optString("shortId",""))
-            .put("spiderX",sourceReality.optString("spiderX","/"));
+        // Preserve the provider's complete VLESS outbound. Rebuilding only a subset of
+        // streamSettings silently drops transport-specific fields (sockopt, tcp/raw,
+        // xhttp mode/host/path, mux, packetEncoding, and future Xray options).
+        // Only normalize the tag because the app's routing rule targets "proxy".
+        JSONObject outbound=new JSONObject(sourceProxy.toString()).put("tag","proxy");
         String network=sourceStream.optString("network","tcp");
-        JSONObject stream=new JSONObject().put("network",network).put("security","reality").put("realitySettings",reality);
-        if("xhttp".equalsIgnoreCase(network) && sourceStream.optJSONObject("xhttpSettings")!=null)
-            stream.put("xhttpSettings",sourceStream.getJSONObject("xhttpSettings"));
-        if("grpc".equalsIgnoreCase(network) && sourceStream.optJSONObject("grpcSettings")!=null)
-            stream.put("grpcSettings",sourceStream.getJSONObject("grpcSettings"));
-        if("ws".equalsIgnoreCase(network) && sourceStream.optJSONObject("wsSettings")!=null)
-            stream.put("wsSettings",sourceStream.getJSONObject("wsSettings"));
-        JSONObject outbound=new JSONObject().put("tag","proxy").put("protocol","vless").put("settings",settings).put("streamSettings",stream);
         JSONObject direct=new JSONObject().put("tag","direct").put("protocol","freedom");
         JSONObject block=new JSONObject().put("tag","block").put("protocol","blackhole");
         JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
