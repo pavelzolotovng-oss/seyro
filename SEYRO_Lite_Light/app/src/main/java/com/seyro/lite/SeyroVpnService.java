@@ -7,6 +7,10 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
+import android.os.Handler;
+import android.os.Looper;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import android.util.Log;
 import libv2ray.CoreCallbackHandler;
 import libv2ray.CoreController;
@@ -20,6 +24,11 @@ public class SeyroVpnService extends VpnService {
     private static final String TAG = "SEYRO-VPN";
     private static final String CHANNEL_ID = "seyro_vpn";
     private static final int NOTIFICATION_ID = 1;
+    public static final String ACTION_STATE_CHANGED = "com.seyro.lite.VPN_STATE_CHANGED";
+    public static volatile String vpnState = "disconnected";
+    public static volatile String lastError = "";
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService vpnExecutor = Executors.newSingleThreadExecutor();
     private ParcelFileDescriptor tun;
     private CoreController controller;
 
@@ -33,29 +42,56 @@ public class SeyroVpnService extends VpnService {
     };
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null || ACTION_STOP.equals(intent.getAction())) {
-            stopVpn();
-            stopSelf();
+        if(intent==null || ACTION_STOP.equals(intent.getAction())) {
+            setVpnState("disconnecting","");
+            vpnExecutor.execute(() -> {
+                stopVpn();
+                setVpnState("disconnected","");
+                mainHandler.post(() -> { stopForeground(true); stopSelf(startId); });
+            });
             return START_NOT_STICKY;
         }
-        if (!ACTION_START.equals(intent.getAction())) return START_NOT_STICKY;
-        String config = intent.getStringExtra(EXTRA_CONFIG);
-        if (config == null || config.trim().isEmpty()) {
-            Log.e(TAG, "Missing Xray configuration");
-            stopSelf();
+        if(!ACTION_START.equals(intent.getAction())) return START_NOT_STICKY;
+        String config=intent.getStringExtra(EXTRA_CONFIG);
+        if(config==null || config.trim().isEmpty()) {
+            setVpnState("error","Профиль пустой. Добавьте ссылку и попробуйте снова.");
+            stopSelf(startId);
             return START_NOT_STICKY;
         }
+        if("connecting".equals(vpnState)||"connected".equals(vpnState)) return START_NOT_STICKY;
         try {
             startInForeground();
-            startVpn(config);
-            return START_NOT_STICKY;
-        } catch (Exception e) {
-            Log.e(TAG, "VPN start failed", e);
-            stopVpn();
-            stopForeground(true);
-            stopSelf();
+        } catch(Exception e) {
+            Log.e(TAG,"Could not start foreground notification",e);
+            setVpnState("error","Не удалось запустить VPN-службу: "+safeMessage(e));
+            stopSelf(startId);
             return START_NOT_STICKY;
         }
+        setVpnState("connecting","");
+        vpnExecutor.execute(() -> {
+            try {
+                startVpn(config);
+                setVpnState("connected","");
+            } catch(Exception e) {
+                Log.e(TAG,"VPN start failed",e);
+                stopVpn();
+                setVpnState("error","Xray не запустился: "+safeMessage(e));
+                mainHandler.post(() -> { stopForeground(true); stopSelf(startId); });
+            }
+        });
+        return START_NOT_STICKY;
+    }
+
+    private String safeMessage(Exception error) {
+        String message=error.getMessage();
+        return message==null||message.trim().isEmpty()?error.getClass().getSimpleName():message;
+    }
+
+    private void setVpnState(String state,String error) {
+        vpnState=state;
+        lastError=error;
+        Intent broadcast=new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName());
+        sendBroadcast(broadcast);
     }
 
     private void startInForeground() {
@@ -72,7 +108,7 @@ public class SeyroVpnService extends VpnService {
         Notification notification = new Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("SEYRO Lite")
-            .setContentText("VPN-подключение активно")
+            .setContentText("Защищённое соединение SEYRO")
             .setCategory(Notification.CATEGORY_SERVICE)
             .setOngoing(true)
             .setContentIntent(contentIntent)
@@ -111,6 +147,7 @@ public class SeyroVpnService extends VpnService {
     }
 
     @Override public void onRevoke() {
+        setVpnState("disconnected","");
         stopVpn();
         stopForeground(true);
         stopSelf();
@@ -118,6 +155,7 @@ public class SeyroVpnService extends VpnService {
     }
 
     @Override public void onDestroy() {
+        vpnExecutor.shutdownNow();
         stopVpn();
         stopForeground(true);
         super.onDestroy();

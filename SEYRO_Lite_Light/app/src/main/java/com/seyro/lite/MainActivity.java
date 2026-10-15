@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
 import android.net.VpnService;
 import android.os.Build;
 import android.util.Base64;
@@ -35,6 +38,10 @@ public class MainActivity extends Activity {
     private boolean demoOn=false;
     private String selectedConfig="";
     private static final int VPN_PERMISSION_REQUEST=71;
+    private boolean vpnStateReceiverRegistered=false;
+    private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
+        @Override public void onReceive(Context context,Intent intent) { renderVpnState(); }
+    };
 
     private GradientDrawable shape(int color,int radius,int stroke) {
         GradientDrawable d=new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius);
@@ -64,72 +71,98 @@ public class MainActivity extends Activity {
         prefs=getSharedPreferences("seyro_profile",MODE_PRIVATE);
         profileLink=prefs.getString("subscription_link","");
         Window w=getWindow();
-        w.setStatusBarColor(bg); w.setNavigationBarColor(white);
+        w.setStatusBarColor(0xffedf7ff); w.setNavigationBarColor(0xffedf7ff);
         w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
-        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(bg);
-        LinearLayout root=column(); padding(root,18,14,18,26); scroll.addView(root);
+        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(0xffedf7ff);
+        LinearLayout root=column(); padding(root,20,14,20,26); scroll.addView(root);
 
         LinearLayout header=new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView mark=text("S",22,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(blue,15,0));
+        TextView mark=text("S",21,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(blue,16,0));
         header.addView(mark,new LinearLayout.LayoutParams(46,46));
-        LinearLayout brand=column(); TextView name=text("SEYRO",23,ink,true); name.setLetterSpacing(.07f); brand.addView(name);
-        TextView tagline=text("SECURE ACCESS",9,muted,true); tagline.setLetterSpacing(.16f); brand.addView(tagline);
-        LinearLayout.LayoutParams brandParams=new LinearLayout.LayoutParams(0,-2,1); brandParams.leftMargin=12;
-        header.addView(brand,brandParams);
-        TextView avatar=pill("P",blue,paleBlue); header.addView(avatar,new LinearLayout.LayoutParams(40,38));
+        LinearLayout brand=column(); TextView name=text("SEYRO",21,ink,true); name.setLetterSpacing(.07f); brand.addView(name);
+        TextView tagline=text("LITE VPN",9,blue,true); tagline.setLetterSpacing(.18f); brand.addView(tagline);
+        LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,-2,1); bp.leftMargin=11; header.addView(brand,bp);
+        TextView settings=text("⚙",22,ink,true); settings.setGravity(Gravity.CENTER);
+        header.addView(settings,new LinearLayout.LayoutParams(42,42)); settings.setOnClickListener(v->showSettings());
         root.addView(header);
 
-        add(root,text("ЛИЧНЫЙ КАБИНЕТ",11,blue,true),25);
-        add(root,text("Добро пожаловать",29,ink,true),5);
-        add(root,text("Защищённый доступ — под вашим контролем.",13,muted,false),5);
+        add(root,text("ДОБРО ПОЖАЛОВАТЬ",11,blue,true),25);
+        add(root,text("Ваш интернет.\nПод защитой.",29,ink,true),5);
+        add(root,text("Подключайтесь к SEYRO в одно касание.",13,muted,false),6);
 
-        LinearLayout connection=card(); connection.setBackground(shape(white,22,0xffdce5f5)); add(root,connection,20);
-        LinearLayout top=new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL);
-        status=text("●  НЕ ПОДКЛЮЧЕНО",10,muted,true); top.addView(status);
-        View spacer=new View(this); top.addView(spacer,new LinearLayout.LayoutParams(0,1,1));
-        top.addView(pill("VLESS · REALITY",blue,paleBlue)); connection.addView(top);
-        add(connection,text("Автоматический выбор",20,ink,true),16);
-        add(connection,text("Оптимальный маршрут · защищённое соединение",12,muted,false),4);
-        LinearLayout buttons=new LinearLayout(this); buttons.setGravity(Gravity.CENTER_VERTICAL);
-        connect=text("Подключить",14,white,true); connect.setGravity(Gravity.CENTER);
-        padding(connect,14,14,14,14); connect.setBackground(shape(blue,13,0));
-        buttons.addView(connect,new LinearLayout.LayoutParams(0,-2,1));
-        TextView settings=text("⚙  Настройки",12,blue,true); settings.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams settingsParams=new LinearLayout.LayoutParams(-2,-2); settingsParams.leftMargin=12;
-        buttons.addView(settings,settingsParams); add(connection,buttons,17);
-        hint=text(profileLink.isEmpty()?"Добавьте ссылку подписки в профиле, чтобы подготовить подключение.":"Ссылка подписки сохранена в профиле.",11,muted,false);
-        add(connection,hint,12);
+        LinearLayout hero=column(); padding(hero,19,19,19,20); hero.setBackground(shape(white,24,0));
+        add(root,hero,19);
+        LinearLayout center=column(); center.setGravity(Gravity.CENTER);
+        TextView shield=text("S",35,blue,true); shield.setGravity(Gravity.CENTER);
+        shield.setBackground(shape(0xffe4f3ff,100,0));
+        LinearLayout.LayoutParams shieldP=new LinearLayout.LayoutParams(104,104); shieldP.gravity=Gravity.CENTER;
+        center.addView(shield,shieldP);
+        status=text("●  НЕ ПОДКЛЮЧЕНО",12,muted,true); status.setGravity(Gravity.CENTER);
+        add(center,status,16); hero.addView(center);
+        hint=text(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.",12,muted,false);
+        hint.setGravity(Gravity.CENTER); add(hero,hint,8);
+        connect=text("⏻    Подключить",16,white,true); connect.setGravity(Gravity.CENTER);
+        padding(connect,16,15,16,15); connect.setBackground(shape(blue,16,0)); add(hero,connect,18);
         connect.setOnClickListener(v->onConnect());
-        settings.setOnClickListener(v->showSettings());
 
-        LinearLayout stats=new LinearLayout(this); LinearLayout.LayoutParams statsP=new LinearLayout.LayoutParams(-1,-2);
-        statsP.topMargin=14; root.addView(stats,statsP);
-        LinearLayout traffic=card(); LinearLayout.LayoutParams half=new LinearLayout.LayoutParams(0,-1,1);
-        half.rightMargin=6; stats.addView(traffic,half);
-        traffic.addView(text("ТРАФИК",10,muted,true));
-        add(traffic,text("— ГБ",25,ink,true),9);
-        add(traffic,text("данные из API",10,muted,false),3);
-        LinearLayout sub=card(); LinearLayout.LayoutParams half2=new LinearLayout.LayoutParams(0,-1,1);
-        half2.leftMargin=6; stats.addView(sub,half2);
+        LinearLayout profile=card(); padding(profile,16,14,16,14); add(root,profile,14);
+        profile.addView(menuRow("Профиль","Ссылка и параметры аккаунта","↗",()->showProfile()));
+        profile.setOnClickListener(v->showProfile());
+
+        LinearLayout pair=new LinearLayout(this); LinearLayout.LayoutParams pairP=new LinearLayout.LayoutParams(-1,-2);
+        pairP.topMargin=12; root.addView(pair,pairP);
+        LinearLayout sub=card(); LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-2,1); hp.rightMargin=6;
+        pair.addView(sub,hp); sub.setOnClickListener(v->showSubscription());
         sub.addView(text("ПОДПИСКА",10,muted,true));
-        subscriptionState=text(profileLink.isEmpty()?"Не настроена":"Ссылка добавлена",17,ink,true);
-        add(sub,subscriptionState,10);
-        add(sub,text("синхронизация API",10,muted,false),4);
+        subscriptionState=text(profileLink.isEmpty()?"Не настроена":"Профиль добавлен",14,ink,true);
+        add(sub,subscriptionState,7);
+        LinearLayout help=card(); LinearLayout.LayoutParams hp2=new LinearLayout.LayoutParams(0,-2,1); hp2.leftMargin=6;
+        pair.addView(help,hp2); help.setOnClickListener(v->showHelp());
+        help.addView(text("НУЖНА ПОМОЩЬ?",10,muted,true)); add(help,text("Поддержка  ›",14,blue,true),7);
 
-        LinearLayout quick=card(); add(root,quick,14);
-        quick.addView(text("Ваш SEYRO",17,ink,true));
-        add(quick,text("Настройки и управление",11,muted,false),3);
-        add(quick,menuRow("Профиль и безопасность","Ссылка подписки и параметры аккаунта","↗",()->showProfile()),15);
-        divider(quick);
-        add(quick,menuRow("Моя подписка","Тариф, срок и статус","›",()->showSubscription()),0);
-        divider(quick);
-        add(quick,menuRow("Помощь","Ответы и связь с поддержкой","›",()->showHelp()),0);
-
-        TextView footer=text("SEYRO LITE  •  LIGHT 0.3",9,0xff98a3b4,true);
+        TextView footer=text("SEYRO LITE  •  ЗАЩИЩЁННЫЙ ДОСТУП",9,0xff9aa6b8,true);
         footer.setGravity(Gravity.CENTER); add(root,footer,20);
         setContentView(scroll);
+        renderVpnState();
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        IntentFilter filter=new IntentFilter(SeyroVpnService.ACTION_STATE_CHANGED);
+        if(Build.VERSION.SDK_INT>=33) registerReceiver(vpnStateReceiver,filter,Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(vpnStateReceiver,filter);
+        vpnStateReceiverRegistered=true;
+        renderVpnState();
+    }
+
+    @Override protected void onStop() {
+        if(vpnStateReceiverRegistered) { unregisterReceiver(vpnStateReceiver); vpnStateReceiverRegistered=false; }
+        super.onStop();
+    }
+
+    private void renderVpnState() {
+        if(status==null||connect==null||hint==null) return;
+        String state=SeyroVpnService.vpnState;
+        if("connected".equals(state)) {
+            status.setText("●  ПОДКЛЮЧЕНО"); status.setTextColor(green);
+            connect.setText("⏻    Отключиться"); connect.setEnabled(true);
+            hint.setText("Защищённое соединение активно.");
+        } else if("connecting".equals(state)||"disconnecting".equals(state)) {
+            status.setText("●  "+("connecting".equals(state)?"ПОДКЛЮЧАЕМСЯ":"ОТКЛЮЧАЕМСЯ")); status.setTextColor(blue);
+            connect.setText("Подождите…"); connect.setEnabled(false);
+            hint.setText("Запускаем защищённый туннель. Состояние обновится автоматически.");
+        } else if("error".equals(state)) {
+            status.setText("●  НЕ УДАЛОСЬ ПОДКЛЮЧИТЬ"); status.setTextColor(0xffc64747);
+            connect.setText("Повторить"); connect.setEnabled(true);
+            hint.setText(SeyroVpnService.lastError.isEmpty()?"Проверьте профиль и попробуйте снова.":SeyroVpnService.lastError);
+        } else {
+            status.setText("●  НЕ ПОДКЛЮЧЕНО"); status.setTextColor(muted);
+            connect.setText("⏻    Подключить"); connect.setEnabled(true);
+            hint.setText(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.");
+        }
+        if(subscriptionState!=null) subscriptionState.setText(profileLink.isEmpty()?"Не настроена":"Профиль добавлен");
     }
 
     private View menuRow(String title,String subtitle,String icon,Runnable action) {
@@ -171,9 +204,7 @@ public class MainActivity extends Activity {
         return s.startsWith("https://")||s.startsWith("http://")||s.startsWith("vless://");
     }
     private void refreshProfileState() {
-        if(subscriptionState!=null) subscriptionState.setText(profileLink.isEmpty()?"Не настроена":"Ссылка добавлена");
-        if(hint!=null) hint.setText(profileLink.isEmpty()?"Добавьте ссылку подписки в профиле, чтобы подготовить подключение.":"Ссылка подписки сохранена в профиле.");
-        if(status!=null) { status.setText("●  НЕ ПОДКЛЮЧЕНО"); status.setTextColor(muted); }
+        renderVpnState();
     }
     private void showSettings() {
         String[] choices={"Автоматический выбор","VLESS + REALITY","Обновлять профиль вручную"};
@@ -193,10 +224,16 @@ public class MainActivity extends Activity {
     }
     private void showHelp() {
         new AlertDialog.Builder(this).setTitle("Помощь")
-            .setMessage("Добавьте постоянную ссылку из личного кабинета SEYRO. В этой сборке сохранение ссылки и оформление интерфейса готовы; VPN-движок и синхронизация с API ещё не подключены.")
+            .setMessage("Добавьте постоянную ссылку из личного кабинета SEYRO. Добавьте ссылку профиля VLESS + REALITY из личного кабинета SEYRO. Если подключение не запускается, проверьте ссылку и доступ к серверу.")
             .setPositiveButton("Понятно",null).show();
     }
     private void onConnect() {
+        if("connected".equals(SeyroVpnService.vpnState)) {
+            connect.setEnabled(false); connect.setText("Отключаемся…");
+            Intent stop=new Intent(this,SeyroVpnService.class); stop.setAction(SeyroVpnService.ACTION_STOP); startService(stop);
+            return;
+        }
+        if("connecting".equals(SeyroVpnService.vpnState)||"disconnecting".equals(SeyroVpnService.vpnState)) return;
         if(profileLink.isEmpty()) { showProfile(); return; }
         if(!selectedConfig.isEmpty()) { requestVpnPermissionAndStart(); return; }
         connect.setEnabled(false); connect.setText("Загрузка профиля…");
@@ -307,11 +344,12 @@ public class MainActivity extends Activity {
         }
     }
     private void startVpnService() {
+        status.setText("●  ПОДКЛЮЧАЕМСЯ"); status.setTextColor(blue);
+        connect.setText("Подождите…"); connect.setEnabled(false);
+        hint.setText("Запускаем защищённый туннель…");
         Intent intent=new Intent(this,SeyroVpnService.class);
         intent.setAction(SeyroVpnService.ACTION_START);
         intent.putExtra(SeyroVpnService.EXTRA_CONFIG,selectedConfig);
         if(Build.VERSION.SDK_INT>=26) startForegroundService(intent); else startService(intent);
-        status.setText("●  ЗАПУСК VPN…"); status.setTextColor(blue);
-        hint.setText("Запрос на запуск отправлен. Проверяйте состояние соединения.");
     }
 }
