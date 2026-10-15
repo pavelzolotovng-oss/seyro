@@ -399,10 +399,6 @@ public class MainActivity extends Activity {
         items.add("Журнал отладки");
         actions.add("debug");
 
-        TextView intro=text(manual
-            ?"Ручной режим: выберите TCP или XHTTP ниже."
-            :"Автоматический режим: приложение само выберет профиль.",13,muted,false);
-        intro.setPadding(dp(20),dp(4),dp(20),dp(12));
         new AlertDialog.Builder(this)
             .setTitle("Настройки подключения")
             .setMessage(manual
@@ -422,8 +418,9 @@ public class MainActivity extends Activity {
                             ?"Включён автоматический выбор"
                             :"Включён ручной выбор профиля",Toast.LENGTH_SHORT).show();
                     }
-                    // Reopen the menu so the manual-only profile item appears/disappears immediately.
-                    showSettings();
+                    // Reopen after the current dialog closes so the menu updates immediately.
+                    dialog.dismiss();
+                    new android.os.Handler(getMainLooper()).postDelayed(this::showSettings,180);
                     return;
                 }
                 if("refresh".equals(action)) {
