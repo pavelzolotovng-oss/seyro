@@ -32,7 +32,9 @@ import android.widget.*;
 public class MainActivity extends Activity {
     private final int bg=0xfff3f7ff, white=0xffffffff, ink=0xff14233b, muted=0xff738198,
         line=0xffe2eaf6, blue=0xff2864e8, paleBlue=0xffeaf2ff, green=0xff118568;
-    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge;
+    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge,userGreeting;
+    private volatile String subscriptionTitle="", subscriptionAnnounce="";
+    private volatile long trafficUpload=-1, trafficDownload=-1, trafficTotal=-1, subscriptionExpire=-1;
     private String activeTransport="";
     private SharedPreferences prefs;
     private String profileLink="";
@@ -105,7 +107,7 @@ public class MainActivity extends Activity {
         root.addView(header);
 
         add(root,text("ВАШ ЛИЧНЫЙ VPN",10,blue,true),28);
-        TextView headline=text("Ваш интернет.\nПод защитой.",32,ink,true); headline.setLineSpacing(0f,1.02f); add(root,headline,6);
+        userGreeting=text(greetingText(),25,ink,true); userGreeting.setLineSpacing(0f,1.02f); add(root,userGreeting,6);
         add(root,text("Безопасный доступ — в одно касание.",14,muted,false),8);
 
         LinearLayout hero=column(); padding(hero,20,22,20,20); hero.setBackground(shape(white,26,line)); hero.setElevation(2f);
@@ -407,9 +409,70 @@ public class MainActivity extends Activity {
             .setPositiveButton("Закрыть",null).show();
     }
     private void showSubscription() {
+        StringBuilder info=new StringBuilder();
+        if(profileLink.isEmpty()) info.append("Ссылка подписки ещё не добавлена. Откройте «Профиль и безопасность».");
+        else {
+            if(!subscriptionTitle.isEmpty()) info.append(subscriptionTitle).append("\\n\\n");
+            if(trafficUpload>=0 || trafficDownload>=0) {
+                info.append("Отправлено: ").append(trafficUpload<0?"—":formatBytes(trafficUpload)).append("\\n");
+                info.append("Получено: ").append(trafficDownload<0?"—":formatBytes(trafficDownload)).append("\\n");
+                if(trafficTotal>0) {
+                    long used=Math.max(0,trafficUpload)+Math.max(0,trafficDownload);
+                    info.append("Использовано: ").append(formatBytes(used)).append(" из ").append(formatBytes(trafficTotal)).append("\\n");
+                    info.append("Осталось: ").append(formatBytes(Math.max(0,trafficTotal-used))).append("\\n");
+                }
+            } else info.append("Данные о трафике сервером не переданы.\\n");
+            if(subscriptionExpire>0) info.append("Действует до: ").append(new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(subscriptionExpire*1000L))).append("\\n");
+            if(!subscriptionAnnounce.isEmpty()) info.append("\\n").append(subscriptionAnnounce);
+        }
         new AlertDialog.Builder(this).setTitle("Моя подписка")
-            .setMessage(profileLink.isEmpty()?"Ссылка подписки ещё не добавлена. Откройте «Профиль и безопасность».":"Ссылка сохранена. Срок действия и трафик пока не загружаются: API SEYRO ещё не подключён.")
+            .setMessage(info.toString())
             .setPositiveButton(profileLink.isEmpty()?"Добавить ссылку":"ОК",(d,w)->{if(profileLink.isEmpty())showProfile();}).show();
+    }
+
+    private String greetingText() {
+        if(!subscriptionAnnounce.isEmpty()) return subscriptionAnnounce;
+        if(!subscriptionTitle.isEmpty()) return "Добро пожаловать!\\n"+subscriptionTitle;
+        return "Ваш интернет.\\nПод защитой.";
+    }
+
+    private String decodeMetadataHeader(String value) {
+        if(value==null) return "";
+        String v=value.trim();
+        if(v.regionMatches(true,0,"base64:",0,7)) {
+            try { return new String(Base64.decode(v.substring(7),Base64.DEFAULT),StandardCharsets.UTF_8).trim(); }
+            catch(Exception ignored) {}
+        }
+        return v;
+    }
+
+    private String formatBytes(long bytes) {
+        if(bytes<1024) return bytes+" Б";
+        double value=bytes; String[] units={"Б","КБ","МБ","ГБ","ТБ"}; int i=0;
+        while(value>=1024 && i<units.length-1) { value/=1024.0; i++; }
+        return String.format(java.util.Locale.getDefault(),"%.2f %s",value,units[i]);
+    }
+
+    private void readSubscriptionMetadata(java.net.HttpURLConnection conn) {
+        subscriptionTitle=decodeMetadataHeader(conn.getHeaderField("profile-title"));
+        subscriptionAnnounce=decodeMetadataHeader(conn.getHeaderField("announce"));
+        trafficUpload=-1; trafficDownload=-1; trafficTotal=-1; subscriptionExpire=-1;
+        String userInfo=conn.getHeaderField("subscription-userinfo");
+        if(userInfo!=null) for(String part:userInfo.split(";")) {
+            String[] kv=part.trim().split("=",2);
+            if(kv.length!=2) continue;
+            try {
+                long n=Long.parseLong(kv[1].trim());
+                switch(kv[0].trim().toLowerCase(java.util.Locale.ROOT)) {
+                    case "upload": trafficUpload=n; break;
+                    case "download": trafficDownload=n; break;
+                    case "total": trafficTotal=n; break;
+                    case "expire": subscriptionExpire=n; break;
+                }
+            } catch(NumberFormatException ignored) {}
+        }
+        DebugLog.i(this,"SUBSCRIPTION","Метаданные: title="+(!subscriptionTitle.isEmpty())+
+            "; announce="+(!subscriptionAnnounce.isEmpty())+"; userinfo="+(userInfo!=null));
     }
     private void showHelp() {
         new AlertDialog.Builder(this).setTitle("Помощь")
@@ -494,6 +557,8 @@ public class MainActivity extends Activity {
         conn.setRequestProperty("User-Agent","SEYRO-Lite/"+APP_VERSION);
         try {
             int code=conn.getResponseCode();
+            readSubscriptionMetadata(conn);
+            runOnUiThread(() -> { if(userGreeting!=null) userGreeting.setText(greetingText()); });
             DebugLog.i(this,"SUBSCRIPTION","HTTP статус="+code+"; тип ответа="+conn.getContentType());
             if(code<200||code>=300) throw new IllegalStateException("Сервер подписки ответил HTTP "+code);
             ByteArrayOutputStream out=new ByteArrayOutputStream();
