@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
         ProfileOption(String label,String transport,String config) { this.label=label; this.transport=transport; this.config=config; }
     }
     private static final int VPN_PERMISSION_REQUEST=71;
-    private static final String APP_VERSION="0.7-light";
+    private static final String APP_VERSION="0.7.12";
     private boolean vpnStateReceiverRegistered=false;
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) { renderVpnState(); }
