@@ -3,6 +3,18 @@ package com.seyro.lite;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.content.Intent;
+import android.net.VpnService;
+import android.os.Build;
+import android.util.Base64;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.net.URL;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -20,7 +32,7 @@ public class MainActivity extends Activity {
     private TextView connect,status,hint,profileLinkValue,subscriptionState;
     private SharedPreferences prefs;
     private String profileLink="";
-    private boolean demoOn=false;
+    private boolean demoOn=false;\n    private String selectedConfig="";\n    private static final int VPN_PERMISSION_REQUEST=71;
 
     private GradientDrawable shape(int color,int radius,int stroke) {
         GradientDrawable d=new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius);
@@ -184,9 +196,120 @@ public class MainActivity extends Activity {
     }
     private void onConnect() {
         if(profileLink.isEmpty()) { showProfile(); return; }
-        new AlertDialog.Builder(this).setTitle("Профиль сохранён")
-            .setMessage("Ссылка сохранена. Чтобы подключиться к VPN, нужно интегрировать VLESS + REALITY движок и разрешение Android VPNService. Сейчас приложение не создаёт VPN-туннель.")
-            .setPositiveButton("Настройки", (d,w)->showSettings())
-            .setNegativeButton("Закрыть",null).show();
+        if(!selectedConfig.isEmpty()) { requestVpnPermissionAndStart(); return; }
+        connect.setEnabled(false); connect.setText("Загрузка профиля…");
+        new Thread(() -> {
+            String error=null, config=null;
+            try { config=fetchAndBuildConfig(profileLink); }
+            catch(Exception e) { error=e.getMessage()==null?"Не удалось прочитать подписку":e.getMessage(); }
+            final String result=config, problem=error;
+            runOnUiThread(() -> {
+                connect.setEnabled(true); connect.setText("Подключить");
+                if(problem!=null) {
+                    new AlertDialog.Builder(this).setTitle("Не удалось загрузить подписку")
+                        .setMessage(problem).setPositiveButton("Изменить ссылку",(d,w)->showProfile())
+                        .setNegativeButton("Закрыть",null).show();
+                    return;
+                }
+                selectedConfig=result;
+                hint.setText("Профиль загружен. Нажмите «Подключить» для запуска VPN.");
+                requestVpnPermissionAndStart();
+            });
+        }).start();
+    }
+
+    private String fetchAndBuildConfig(String link) throws Exception {
+        URL url=new URL(link);
+        if(!"https".equalsIgnoreCase(url.getProtocol()) && !"http".equalsIgnoreCase(url.getProtocol()))
+            throw new IllegalArgumentException("Для подписки нужна ссылка HTTPS или HTTP.");
+        java.net.HttpURLConnection conn=(java.net.HttpURLConnection)url.openConnection();
+        conn.setConnectTimeout(12000); conn.setReadTimeout(15000); conn.setInstanceFollowRedirects(true);
+        conn.setRequestProperty("User-Agent","SEYRO-Lite/0.4");
+        try {
+            int code=conn.getResponseCode();
+            if(code<200||code>=300) throw new IllegalStateException("Сервер подписки ответил HTTP "+code);
+            ByteArrayOutputStream out=new ByteArrayOutputStream();
+            try(InputStream in=conn.getInputStream()) {
+                byte[] buf=new byte[4096]; int n; while((n=in.read(buf))!=-1) { out.write(buf,0,n); if(out.size()>2_000_000) throw new IllegalStateException("Ответ подписки слишком большой"); }
+            }
+            String body=new String(out.toByteArray(),StandardCharsets.UTF_8).trim();
+            if(!body.contains("://")) {
+                String compact=body.replaceAll("\\s+","");
+                try { body=new String(Base64.decode(compact,Base64.DEFAULT),StandardCharsets.UTF_8).trim(); }
+                catch(Exception ignored) {}
+            }
+            for(String line:body.split("\\r?\\n")) {
+                String candidate=line.trim();
+                if(candidate.startsWith("vless://")) return buildVlessConfig(candidate);
+            }
+            throw new IllegalStateException("В подписке не найден профиль VLESS. Поддерживается список VLESS + REALITY.");
+        } finally { conn.disconnect(); }
+    }
+
+    private String decode(String value) throws Exception {
+        return URLDecoder.decode(value, "UTF-8");
+    }
+    private String buildVlessConfig(String raw) throws Exception {
+        URI uri=new URI(raw);
+        String authority=uri.getRawAuthority();
+        if(authority==null||!authority.contains("@")) throw new IllegalArgumentException("Некорректная VLESS-ссылка.");
+        String[] auth=authority.split("@",2);
+        String id=auth[0]; String hostPort=auth[1];
+        int colon=hostPort.lastIndexOf(':');
+        if(colon<1) throw new IllegalArgumentException("В профиле не указан порт сервера.");
+        String host=hostPort.substring(0,colon); int port=Integer.parseInt(hostPort.substring(colon+1));
+        java.util.Map<String,String> q=new java.util.HashMap<>();
+        if(uri.getRawQuery()!=null) for(String pair:uri.getRawQuery().split("&")) {
+            String[] kv=pair.split("=",2); q.put(decode(kv[0]),kv.length>1?decode(kv[1]):"");
+        }
+        String security=q.getOrDefault("security","none");
+        String network=q.getOrDefault("type","tcp");
+        if(!"reality".equalsIgnoreCase(security)) throw new IllegalArgumentException("Первый профиль не использует REALITY. Сейчас включена проверка VLESS + REALITY.");
+        JSONObject user=new JSONObject().put("id",id).put("encryption","none");
+        if(!q.getOrDefault("flow","").isEmpty()) user.put("flow",q.get("flow"));
+        JSONArray users=new JSONArray().put(user);
+        JSONObject vnext=new JSONObject().put("address",host).put("port",port).put("users",users);
+        JSONObject settings=new JSONObject().put("vnext",new JSONArray().put(vnext));
+        JSONObject reality=new JSONObject().put("serverName",q.getOrDefault("sni",host))
+            .put("fingerprint",q.getOrDefault("fp","chrome"))
+            .put("publicKey",q.getOrDefault("pbk",q.getOrDefault("publicKey","")))
+            .put("shortId",q.getOrDefault("sid",""))
+            .put("spiderX",q.getOrDefault("spx","/"));
+        if(reality.optString("publicKey").isEmpty()) throw new IllegalArgumentException("В профиле REALITY отсутствует публичный ключ.");
+        JSONObject stream=new JSONObject().put("network",network).put("security","reality").put("realitySettings",reality);
+        JSONObject outbound=new JSONObject().put("tag","proxy").put("protocol","vless").put("settings",settings).put("streamSettings",stream);
+        JSONObject direct=new JSONObject().put("tag","direct").put("protocol","freedom");
+        JSONObject block=new JSONObject().put("tag","block").put("protocol","blackhole");
+        JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
+        JSONObject routing=new JSONObject().put("domainStrategy","AsIs")
+            .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy")));
+        JSONObject inbound=new JSONObject().put("tag","tun-in").put("listen","127.0.0.1").put("port",10808)
+            .put("protocol","socks").put("settings",new JSONObject().put("auth","noauth").put("udp",true));
+        // AndroidLibXrayLite uses the TUN file descriptor passed to StartLoop; this config routes its traffic to the proxy outbound.
+        return new JSONObject().put("log",new JSONObject().put("loglevel","warning"))
+            .put("inbounds",new JSONArray().put(inbound)).put("outbounds",outbounds).put("routing",routing).toString();
+    }
+
+    private void requestVpnPermissionAndStart() {
+        Intent permission=VpnService.prepare(this);
+        if(permission!=null) { startActivityForResult(permission,VPN_PERMISSION_REQUEST); return; }
+        startVpnService();
+    }
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data) {
+        super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==VPN_PERMISSION_REQUEST) {
+            if(resultCode==RESULT_OK) startVpnService();
+            else new AlertDialog.Builder(this).setTitle("Нужно разрешение VPN")
+                .setMessage("Android не разрешил создать VPN-туннель. Подключение не запущено.")
+                .setPositiveButton("Понятно",null).show();
+        }
+    }
+    private void startVpnService() {
+        Intent intent=new Intent(this,SeyroVpnService.class);
+        intent.setAction(SeyroVpnService.ACTION_START);
+        intent.putExtra(SeyroVpnService.EXTRA_CONFIG,selectedConfig);
+        if(Build.VERSION.SDK_INT>=26) startForegroundService(intent); else startService(intent);
+        status.setText("●  ЗАПУСК VPN…"); status.setTextColor(blue);
+        hint.setText("Запрос на запуск отправлен. Проверяйте состояние соединения.");
     }
 }
