@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
     private boolean demoOn=false;
     private String selectedConfig="";
     private static final int VPN_PERMISSION_REQUEST=71;
+    private static final String APP_VERSION="0.5-light";
     private boolean vpnStateReceiverRegistered=false;
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) { renderVpnState(); }
@@ -122,7 +123,7 @@ public class MainActivity extends Activity {
         pair.addView(help,hp2); help.setOnClickListener(v->showHelp());
         help.addView(text("НУЖНА ПОМОЩЬ?",10,muted,true)); add(help,text("Поддержка  ›",14,blue,true),7);
 
-        TextView footer=text("SEYRO LITE  ·  ВЕРСИЯ "+BuildConfig.VERSION_NAME,10,0xff93a0b5,true);
+        TextView footer=text("SEYRO LITE  ·  ВЕРСИЯ "+APP_VERSION,10,0xff93a0b5,true);
         footer.setGravity(Gravity.CENTER); add(root,footer,20);
         setContentView(scroll);
         renderVpnState();
