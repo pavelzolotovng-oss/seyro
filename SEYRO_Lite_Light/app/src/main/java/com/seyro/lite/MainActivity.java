@@ -580,20 +580,19 @@ public class MainActivity extends Activity {
 
     private void showProfileChoices() {
         if(!"disconnected".equals(SeyroVpnService.vpnState)) {
-            new AlertDialog.Builder(this).setTitle("Сначала отключите VPN")
-                .setMessage("Выбор транспорта доступен после отключения.")
-                .setPositiveButton("Понятно",null).show();
+            showSimpleStyledNotice("Сначала отключите VPN",
+                "Выбор транспорта доступен после отключения.");
             return;
         }
-        if(!availableProfiles.isEmpty()) {
-            String[] labels=new String[availableProfiles.size()];
-            for(int i=0;i<labels.length;i++) labels[i]=availableProfiles.get(i).label+" — "+availableProfiles.get(i).transport.toUpperCase(java.util.Locale.ROOT);
-            new AlertDialog.Builder(this).setTitle("Выберите профиль")
-                .setItems(labels,(d,which)->selectProfileWithoutStarting(availableProfiles.get(which)))
-                .setNegativeButton("Отмена",null).show();
-        } else {
+        if(!profileLink.isEmpty() && availableProfiles.isEmpty()) {
             loadProfilesForManualChoice();
+            return;
         }
+        if(availableProfiles.isEmpty()) {
+            showProfile();
+            return;
+        }
+        showProfilePicker(availableProfiles);
     }
 
     private void loadProfilesForManualChoice() {
@@ -608,21 +607,61 @@ public class MainActivity extends Activity {
             final String error=problem;
             runOnUiThread(() -> {
                 if(error!=null || loaded==null || loaded.isEmpty()) {
-                    new AlertDialog.Builder(this).setTitle("Не удалось загрузить профили")
-                        .setMessage(error==null?"Подписка не содержит доступных профилей.":error)
-                        .setPositiveButton("Повторить",(d,w)->loadProfilesForManualChoice())
-                        .setNegativeButton("Закрыть",null).show();
+                    showStyledError("Не удалось загрузить профили",
+                        error==null?"Подписка не содержит доступных профилей.":error,
+                        ()->loadProfilesForManualChoice());
                     return;
                 }
                 availableProfiles=loaded;
-                String[] labels=new String[loaded.size()];
-                for(int i=0;i<loaded.size();i++) labels[i]=loaded.get(i).label+" — "+loaded.get(i).transport.toUpperCase(java.util.Locale.ROOT);
-                new AlertDialog.Builder(this).setTitle("Выберите профиль подключения")
-                    .setMessage("Выберите транспорт TCP или XHTTP.")
-                    .setItems(labels,(d,which)->selectProfileWithoutStarting(loaded.get(which)))
-                    .setNegativeButton("Отмена",null).show();
+                showProfilePicker(loaded);
             });
         }).start();
+    }
+
+    private void showProfilePicker(java.util.ArrayList<ProfileOption> profiles) {
+        LinearLayout box=column();
+        padding(box,dp(20),dp(20),dp(20),dp(16));
+        box.setBackground(shape(white,dp(26),0));
+        TextView icon=text("⇄",25,white,true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(blue,dp(18),0));
+        LinearLayout.LayoutParams iconP=new LinearLayout.LayoutParams(dp(54),dp(54));
+        iconP.gravity=Gravity.CENTER_HORIZONTAL;
+        box.addView(icon,iconP);
+        TextView title=text("Профиль подключения",19,ink,true);
+        title.setGravity(Gravity.CENTER);
+        add(box,title,dp(12));
+        TextView subtitle=text("Выберите транспорт TCP или XHTTP",12,muted,false);
+        subtitle.setGravity(Gravity.CENTER);
+        add(box,subtitle,dp(5));
+
+        LinearLayout list=column();
+        add(box,list,dp(14));
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        for(ProfileOption option:profiles) {
+            boolean selected=selectedConfig.equals(option.config);
+            String transport=option.transport.toUpperCase(java.util.Locale.ROOT);
+            LinearLayout item=rowCard(option.label,transport+(selected?" · выбран":""),
+                selected?"✓":"›",selected);
+            add(list,item,dp(7));
+            item.setOnClickListener(v->{
+                dialog.dismiss();
+                selectProfileWithoutStarting(option);
+            });
+        }
+        LinearLayout buttons=new LinearLayout(this);
+        buttons.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams buttonsP=new LinearLayout.LayoutParams(-1,-2);
+        buttonsP.topMargin=dp(16);
+        box.addView(buttons,buttonsP);
+        TextView cancel=text("Отмена",14,blue,true);
+        cancel.setGravity(Gravity.CENTER);
+        cancel.setBackground(shape(paleBlue,dp(14),0));
+        padding(cancel,dp(10),dp(12),dp(10),dp(12));
+        buttons.addView(cancel,new LinearLayout.LayoutParams(-1,-2));
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        cancel.setOnClickListener(v->dialog.dismiss());
+        dialog.show();
     }
 
     private void selectProfileWithoutStarting(ProfileOption option) {
@@ -631,10 +670,80 @@ public class MainActivity extends Activity {
         prefs.edit().putString("selected_transport",activeTransport).apply();
         DebugLog.i(this,"PROFILE","Выбран профиль в настройках: "+option.label+"; transport="+option.transport);
         updateProtocolBadge();
-        hint.setText("Выбран профиль: "+option.label+" ("+option.transport.toUpperCase(java.util.Locale.ROOT)+")");
-        new AlertDialog.Builder(this).setTitle("Профиль выбран")
-            .setMessage(option.label+"\nТранспорт: "+option.transport.toUpperCase(java.util.Locale.ROOT)+"\nНажмите «Подключить» для запуска.")
-            .setPositiveButton("Понятно",null).show();
+        if(hint!=null) hint.setText("Выбран профиль: "+option.label+" ("+option.transport.toUpperCase(java.util.Locale.ROOT)+")");
+        Toast.makeText(this,"Выбран "+option.transport.toUpperCase(java.util.Locale.ROOT),Toast.LENGTH_SHORT).show();
+
+        // Reopen the settings card so the selected transport is visible immediately,
+        // without an extra confirmation dialog.
+        if(settingsDialog!=null && settingsDialog.isShowing()) settingsDialog.dismiss();
+        new android.os.Handler(getMainLooper()).postDelayed(this::showSettings,150);
+    }
+
+    private void showSimpleStyledNotice(String titleText,String message) {
+        LinearLayout box=column();
+        padding(box,dp(20),dp(20),dp(20),dp(16));
+        box.setBackground(shape(white,dp(24),0));
+        TextView icon=text("!",24,white,true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(blue,dp(18),0));
+        LinearLayout.LayoutParams iconP=new LinearLayout.LayoutParams(dp(50),dp(50));
+        iconP.gravity=Gravity.CENTER_HORIZONTAL;
+        box.addView(icon,iconP);
+        TextView title=text(titleText,18,ink,true);
+        title.setGravity(Gravity.CENTER);
+        add(box,title,dp(12));
+        TextView body=text(message,13,muted,false);
+        body.setGravity(Gravity.CENTER);
+        add(box,body,dp(6));
+        TextView ok=text("Понятно",14,white,true);
+        ok.setGravity(Gravity.CENTER);
+        ok.setBackground(shape(blue,dp(14),0));
+        padding(ok,dp(12),dp(12),dp(12),dp(12));
+        add(box,ok,dp(16));
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        ok.setOnClickListener(v->dialog.dismiss());
+        dialog.show();
+    }
+
+    private void showStyledError(String titleText,String message,Runnable retry) {
+        LinearLayout box=column();
+        padding(box,dp(20),dp(20),dp(20),dp(16));
+        box.setBackground(shape(white,dp(24),0));
+        TextView icon=text("!",24,white,true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(0xffd94a58,dp(18),0));
+        LinearLayout.LayoutParams iconP=new LinearLayout.LayoutParams(dp(50),dp(50));
+        iconP.gravity=Gravity.CENTER_HORIZONTAL;
+        box.addView(icon,iconP);
+        TextView title=text(titleText,18,ink,true);
+        title.setGravity(Gravity.CENTER);
+        add(box,title,dp(12));
+        TextView body=text(message,13,muted,false);
+        body.setGravity(Gravity.CENTER);
+        add(box,body,dp(6));
+        LinearLayout buttons=new LinearLayout(this);
+        buttons.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,-2);
+        bp.topMargin=dp(16);
+        box.addView(buttons,bp);
+        TextView close=text("Закрыть",14,blue,true);
+        close.setGravity(Gravity.CENTER);
+        close.setBackground(shape(paleBlue,dp(14),0));
+        padding(close,dp(10),dp(12),dp(10),dp(12));
+        buttons.addView(close,new LinearLayout.LayoutParams(0,-2,1));
+        TextView again=text("Повторить",14,white,true);
+        again.setGravity(Gravity.CENTER);
+        again.setBackground(shape(blue,dp(14),0));
+        padding(again,dp(10),dp(12),dp(10),dp(12));
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,-2,1);
+        ap.leftMargin=dp(8);
+        buttons.addView(again,ap);
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        close.setOnClickListener(v->dialog.dismiss());
+        again.setOnClickListener(v->{dialog.dismiss();retry.run();});
+        dialog.show();
     }
 
     private void showDebugLog() {
