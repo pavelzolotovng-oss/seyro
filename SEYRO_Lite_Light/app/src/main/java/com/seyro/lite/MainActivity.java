@@ -706,9 +706,8 @@ public class MainActivity extends Activity {
         cancel.setBackground(shape(paleBlue,dp(14),0));
         padding(cancel,dp(10),dp(12),dp(10),dp(12));
         buttons.addView(cancel,new LinearLayout.LayoutParams(-1,-2));
-        // Dim the settings behind the picker slightly so the two cards are visually
-        // separated without the strong double-dimming effect.
-        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.22f));
+        // Match the main-menu modal dim so the profile picker clearly sits above settings.
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
         cancel.setOnClickListener(v->dialog.dismiss());
         dialog.show();
     }
@@ -860,9 +859,8 @@ public class MainActivity extends Activity {
         closeP.leftMargin=dp(6);
         buttons.addView(close,closeP);
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
-        // Use the same width/rounding as the settings card; a single light dim layer
-        // keeps the log distinct without creating a second bright panel underneath.
-        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.32f));
+        // Match the standard main-menu modal dim amount.
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
         share.setOnClickListener(v->{
             Intent intent=new Intent(Intent.ACTION_SEND).setType("text/plain")
                 .putExtra(Intent.EXTRA_SUBJECT,"SEYRO Lite — журнал отладки")
