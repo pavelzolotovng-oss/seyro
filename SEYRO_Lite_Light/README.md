@@ -1,14 +1,23 @@
-# SEYRO Lite 0.2 — Light theme
+# SEYRO Lite 0.3 — Light
 
-Native Android source project. Light style inspired by a clean website and SaaS account dashboard.
+Native Android Java prototype with a refreshed light dashboard, clearer connection and subscription cards, and profile settings for a permanent SEYRO subscription link.
 
-Included: native Java Activity, light dashboard UI, demo connect/disconnect interaction, traffic/subscription cards and quick-access rows.
+## Included
+- Redesigned light dashboard cards and improved spacing.
+- Profile dialog accepts and locally stores an `https://`, `http://`, or `vless://` link using Android SharedPreferences.
+- Settings, subscription, and help screens explain current connection state.
+- Build is intentionally transparent: storing a link does not mean a VPN tunnel is active.
 
-Important: the connect button is only a UI demo. It does not create a VPN tunnel or connect to SEYRO servers. API/authentication, subscription data and the VLESS + REALITY engine are not integrated yet.
+## Not yet implemented
+- VLESS + REALITY core and Android `VpnService` integration.
+- Fetching and parsing a subscription URL.
+- SEYRO API authentication, subscription status, traffic usage, and server selection.
+
+The Connect action must not be treated as a working VPN until the engine and API are integrated.
 
 ## Build APK
 Open this folder in Android Studio, allow Gradle sync, then choose Build > Build APK(s).
 
-Application ID: com.seyro.lite
-Version: 0.2-light
+Application ID: `com.seyro.lite`
+Version: `0.3-light`
 Minimum Android: 8.0 (API 26)
