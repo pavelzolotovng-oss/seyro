@@ -1,0 +1,38 @@
+name: Build SEYRO Lite APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "SEYRO_Lite_Light/**"
+      - ".github/workflows/android-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Build debug APK
+        working-directory: SEYRO_Lite_Light
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          gradle --no-daemon assembleDebug
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seyro-lite-debug-apk
+          path: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
