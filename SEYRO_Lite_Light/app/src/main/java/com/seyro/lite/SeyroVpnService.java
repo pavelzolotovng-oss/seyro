@@ -11,6 +11,9 @@ import android.os.Handler;
 import android.os.Looper;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import android.util.Log;
 import libv2ray.CoreCallbackHandler;
 import libv2ray.CoreController;
@@ -29,6 +32,8 @@ public class SeyroVpnService extends VpnService {
     public static volatile String lastError = "";
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService vpnExecutor = Executors.newSingleThreadExecutor();
+    private final ScheduledExecutorService diagnosticsExecutor = Executors.newSingleThreadScheduledExecutor();
+    private ScheduledFuture<?> diagnosticsTask;
     private ParcelFileDescriptor tun;
     private CoreController controller;
 
@@ -147,10 +152,26 @@ public class SeyroVpnService extends VpnService {
         controller.startLoop(config, tun.getFd());
         DebugLog.i(this,"XRAY","StartLoop вернулся; isRunning="+controller.getIsRunning());
         if (!controller.getIsRunning()) throw new IllegalStateException("Xray core did not start");
+        startTrafficDiagnostics();
         Log.i(TAG, "VPN interface and Xray core started");
     }
 
+    private void startTrafficDiagnostics() {
+        if (diagnosticsTask != null) diagnosticsTask.cancel(true);
+        diagnosticsTask = diagnosticsExecutor.scheduleWithFixedDelay(() -> {
+            CoreController current = controller;
+            if (current == null || !current.getIsRunning()) return;
+            try {
+                String traffic = current.queryAllOutboundTrafficStats();
+                DebugLog.i(this, "TRAFFIC", traffic == null || traffic.isEmpty() ? "outbound counters empty" : "outbound counters: " + traffic);
+            } catch (Exception e) {
+                DebugLog.w(this, "TRAFFIC", "counter read failed: " + e.getClass().getSimpleName());
+            }
+        }, 3, 10, TimeUnit.SECONDS);
+    }
+
     private void stopVpn() {
+        if (diagnosticsTask != null) { diagnosticsTask.cancel(true); diagnosticsTask = null; }
         DebugLog.i(this,"VPN","Остановка ядра/закрытие TUN");
         try {
             if (controller != null) controller.stopLoop();
@@ -174,6 +195,7 @@ public class SeyroVpnService extends VpnService {
     @Override public void onDestroy() {
         DebugLog.i(this,"SERVICE","Служба уничтожается");
         vpnExecutor.shutdownNow();
+        diagnosticsExecutor.shutdownNow();
         stopVpn();
         stopForeground(true);
         super.onDestroy();
