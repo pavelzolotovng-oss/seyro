@@ -394,58 +394,186 @@ public class MainActivity extends Activity {
     private void showSettings() {
         String mode=prefs.getString("selection_mode","auto");
         boolean manual="manual".equals(mode);
-        java.util.ArrayList<String> items=new java.util.ArrayList<>();
-        java.util.ArrayList<String> actions=new java.util.ArrayList<>();
 
-        items.add(("auto".equals(mode)?"✓  ":"")+"Автоматический выбор");
-        actions.add("auto");
-        items.add(("manual".equals(mode)?"✓  ":"")+"Ручной выбор");
-        actions.add("manual");
+        LinearLayout box=column();
+        padding(box,dp(20),dp(20),dp(20),dp(16));
+        box.setBackground(shape(white,dp(26),0));
 
-        // A specific transport can be selected only in manual mode.
+        TextView icon=text("⚙",25,white,true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(blue,dp(18),0));
+        LinearLayout.LayoutParams iconP=new LinearLayout.LayoutParams(dp(54),dp(54));
+        iconP.gravity=Gravity.CENTER_HORIZONTAL;
+        box.addView(icon,iconP);
+
+        TextView title=text("Настройки подключения",19,ink,true);
+        title.setGravity(Gravity.CENTER);
+        add(box,title,dp(12));
+        TextView subtitle=text("Выберите режим работы VPN",12,muted,false);
+        subtitle.setGravity(Gravity.CENTER);
+        add(box,subtitle,dp(5));
+
+        LinearLayout options=column();
+        add(box,options,dp(16));
+        addSettingsOption(options,"Автоматический выбор",
+            "Подключаться к первому доступному профилю","auto".equals(mode),
+            ()->changeSelectionMode("auto"));
+        addSettingsOption(options,"Ручной выбор",
+            "Самостоятельно выбирать транспорт TCP или XHTTP",manual,
+            ()->changeSelectionMode("manual"));
+
         if(manual) {
-            items.add("↳  Выбрать профиль подключения");
-            actions.add("choose_profile");
+            TextView section=text("ПРОФИЛЬ ПОДКЛЮЧЕНИЯ",10,muted,true);
+            add(options,section,dp(12));
+            LinearLayout choose=rowCard("Выбрать профиль подключения",
+                "Текущий выбор: "+(activeTransport.isEmpty()?"не выбран":activeTransport.toUpperCase(java.util.Locale.ROOT)),
+                "›",false);
+            add(options,choose,dp(6));
+            choose.setOnClickListener(v->showProfileChoices());
         }
-        items.add("Обновить подписку");
-        actions.add("refresh");
-        items.add("Журнал отладки");
-        actions.add("debug");
 
-        // Do not combine setMessage() and setItems(): on Android this can make
-        // the settings list confusing or hide the actionable choices on some devices.
-        new AlertDialog.Builder(this)
-            .setTitle("Настройки подключения")
-            .setItems(items.toArray(new String[0]),(dialog,which)->{
-                String action=actions.get(which);
-                if("debug".equals(action)) { showDebugLog(); return; }
-                if("choose_profile".equals(action)) { showProfileChoices(); return; }
-                if("auto".equals(action) || "manual".equals(action)) {
-                    String next=action;
-                    boolean changed=!next.equals(prefs.getString("selection_mode","auto"));
-                    prefs.edit().putString("selection_mode",next).apply();
-                    updateProtocolBadge();
-                    if(changed) {
-                        Toast.makeText(this,next.equals("auto")
-                            ?"Включён автоматический выбор"
-                            :"Включён ручной выбор профиля",Toast.LENGTH_SHORT).show();
-                    }
-                    // Reopen after the current dialog closes so the menu updates immediately.
-                    dialog.dismiss();
-                    new android.os.Handler(getMainLooper()).postDelayed(this::showSettings,180);
-                    return;
-                }
-                if("refresh".equals(action)) {
-                    refreshSubscriptionMetadataInBackground();
-                    new AlertDialog.Builder(this).setTitle("Обновление подписки")
-                        .setMessage("Запрошено обновление данных подписки. Список профилей будет обновлён при следующем подключении.")
-                        .setPositiveButton("Понятно",null).show();
-                }
-            })
-            .setNegativeButton("Закрыть",null)
-            .setPositiveButton("Ссылка профиля",(d,w)->showProfile())
-            .show();
+        LinearLayout refresh=rowCard("Обновить подписку",
+            "Обновить сведения о сроке и трафике","↻",false);
+        add(options,refresh,dp(8));
+        refresh.setOnClickListener(v->{
+            refreshSubscriptionMetadataInBackground();
+            new AlertDialog.Builder(this).setTitle("Обновление подписки")
+                .setMessage("Запрошено обновление данных подписки.")
+                .setPositiveButton("Понятно",null).show();
+        });
+
+        LinearLayout debug=rowCard("Журнал отладки",
+            "Диагностика проблем с подключением","≡",false);
+        add(options,debug,dp(8));
+        debug.setOnClickListener(v->showDebugLog());
+
+        LinearLayout actions=new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams actionsP=new LinearLayout.LayoutParams(-1,-2);
+        actionsP.topMargin=dp(16);
+        box.addView(actions,actionsP);
+        TextView close=text("Закрыть",14,blue,true);
+        close.setGravity(Gravity.CENTER);
+        close.setBackground(shape(paleBlue,dp(14),0));
+        padding(close,dp(10),dp(12),dp(10),dp(12));
+        actions.addView(close,new LinearLayout.LayoutParams(0,-2,1));
+        TextView profile=text("Ссылка профиля",14,white,true);
+        profile.setGravity(Gravity.CENTER);
+        profile.setBackground(shape(blue,dp(14),0));
+        padding(profile,dp(10),dp(12),dp(10),dp(12));
+        LinearLayout.LayoutParams profileP=new LinearLayout.LayoutParams(0,-2,1);
+        profileP.leftMargin=dp(8);
+        actions.addView(profile,profileP);
+
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        close.setOnClickListener(v->dialog.dismiss());
+        profile.setOnClickListener(v->{dialog.dismiss();showProfile();});
+        dialog.show();
     }
+
+    private void addSettingsOption(LinearLayout parent,String titleText,String description,
+                                   boolean selected,Runnable action) {
+        LinearLayout item=column();
+        padding(item,dp(13),dp(11),dp(13),dp(11));
+        item.setBackground(shape(selected?paleBlue:0xfff7faff,dp(16),selected?blue:line));
+        LinearLayout row=new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title=text(titleText,14,ink,true);
+        row.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        TextView check=text(selected?"✓":"○",20,selected?blue:muted,true);
+        check.setGravity(Gravity.CENTER);
+        row.addView(check,new LinearLayout.LayoutParams(dp(30),-2));
+        item.addView(row);
+        TextView desc=text(description,11,muted,false);
+        add(item,desc,dp(3));
+        add(parent,item,dp(7));
+        item.setOnClickListener(v->action.run());
+    }
+
+    private LinearLayout rowCard(String titleText,String description,String symbol,boolean selected) {
+        LinearLayout item=column();
+        padding(item,dp(13),dp(11),dp(13),dp(11));
+        item.setBackground(shape(selected?paleBlue:0xfff7faff,dp(15),selected?blue:line));
+        LinearLayout row=new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name=text(titleText,13,ink,true);
+        row.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+        TextView marker=text(symbol,20,blue,true);
+        marker.setGravity(Gravity.CENTER);
+        row.addView(marker,new LinearLayout.LayoutParams(dp(28),-2));
+        item.addView(row);
+        add(item,text(description,11,muted,false),dp(3));
+        return item;
+    }
+
+    private void changeSelectionMode(String next) {
+        String old=prefs.getString("selection_mode","auto");
+        boolean changed=!next.equals(old);
+        prefs.edit().putString("selection_mode",next).apply();
+        updateProtocolBadge();
+        if(changed) {
+            Toast.makeText(this,next.equals("auto")
+                ?"Включён автоматический выбор"
+                :"Включён ручной выбор профиля",Toast.LENGTH_SHORT).show();
+        }
+        showSettings();
+    }
+
+    private void styleCustomDialog(AlertDialog dialog,float dimAmount) {
+        Window window=dialog.getWindow();
+        if(window!=null) {
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params=window.getAttributes();
+            params.width=getResources().getDisplayMetrics().widthPixels-dp(32);
+            params.height=WindowManager.LayoutParams.WRAP_CONTENT;
+            params.gravity=Gravity.CENTER;
+            params.dimAmount=dimAmount;
+            window.setAttributes(params);
+        }
+    }
+
+    private void showStyledManualPrompt() {
+        LinearLayout box=column();
+        padding(box,dp(20),dp(20),dp(20),dp(16));
+        box.setBackground(shape(white,dp(24),0));
+        TextView icon=text("!",24,white,true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(blue,dp(18),0));
+        LinearLayout.LayoutParams iconP=new LinearLayout.LayoutParams(dp(52),dp(52));
+        iconP.gravity=Gravity.CENTER_HORIZONTAL;
+        box.addView(icon,iconP);
+        TextView title=text("Ручной выбор",19,ink,true);
+        title.setGravity(Gravity.CENTER);
+        add(box,title,dp(12));
+        TextView description=text("Сначала выберите профиль подключения. После выбора нажмите «Подключить».",13,muted,false);
+        description.setGravity(Gravity.CENTER);
+        add(box,description,dp(7));
+        LinearLayout buttons=new LinearLayout(this);
+        buttons.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams buttonsP=new LinearLayout.LayoutParams(-1,-2);
+        buttonsP.topMargin=dp(18);
+        box.addView(buttons,buttonsP);
+        TextView cancel=text("Отмена",14,blue,true);
+        cancel.setGravity(Gravity.CENTER);
+        cancel.setBackground(shape(paleBlue,dp(14),0));
+        padding(cancel,dp(8),dp(12),dp(8),dp(12));
+        buttons.addView(cancel,new LinearLayout.LayoutParams(0,-2,1));
+        TextView open=text("Выбрать профиль",14,white,true);
+        open.setGravity(Gravity.CENTER);
+        open.setBackground(shape(blue,dp(14),0));
+        padding(open,dp(8),dp(12),dp(8),dp(12));
+        LinearLayout.LayoutParams openP=new LinearLayout.LayoutParams(0,-2,1);
+        openP.leftMargin=dp(8);
+        buttons.addView(open,openP);
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        cancel.setOnClickListener(v->dialog.dismiss());
+        open.setOnClickListener(v->{dialog.dismiss();showSettings();});
+        dialog.show();
+    }
+
     private void showProfileChoices() {
         if(!"disconnected".equals(SeyroVpnService.vpnState)) {
             new AlertDialog.Builder(this).setTitle("Сначала отключите VPN")
@@ -762,12 +890,7 @@ public class MainActivity extends Activity {
             return;
         }
         if(manualMode) {
-            new AlertDialog.Builder(this)
-                .setTitle("Выберите профиль в настройках")
-                .setMessage("В ручном режиме сначала выберите TCP или XHTTP через ⚙ → «Выбрать профиль подключения».")
-                .setPositiveButton("Открыть настройки",(d,w)->showSettings())
-                .setNegativeButton("Отмена",null)
-                .show();
+            showStyledManualPrompt();
             return;
         }
         connect.setEnabled(false); connect.setText("Загрузка профиля…");
