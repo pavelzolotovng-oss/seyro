@@ -128,19 +128,19 @@ public class SeyroVpnService extends VpnService {
         stopVpn();
         Builder builder = new Builder();
         builder.setSession("SEYRO Lite")
-            .setMtu(1500)
+            .setMtu(1400)
             .addAddress("10.77.0.1", 30)
             .addRoute("0.0.0.0", 0)
             .addDnsServer("1.1.1.1")
             .addDnsServer("9.9.9.9");
         tun = builder.establish();
         if (tun == null) throw new IllegalStateException("Android did not establish the VPN interface");
-        DebugLog.i(this,"VPN","TUN-интерфейс создан; fd доступен; MTU=1500; IPv4 default route и DNS заданы");
+        DebugLog.i(this,"VPN","TUN-интерфейс создан; fd доступен; MTU=1400; IPv4 default route и DNS заданы");
         Seq.setContext(getApplicationContext());
         // AndroidLibXrayLite requires an XUDP BaseKey of exactly 32 bytes.
         Libv2ray.initCoreEnv(getFilesDir().getAbsolutePath(), "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY");
         controller = Libv2ray.newCoreController(callback);
-        DebugLog.i(this,"XRAY","Запуск Xray StartLoop; конфигурация и секреты не записываются");
+        DebugLog.i(this,"XRAY","Запуск Xray StartLoop; Android TUN fd передаётся в libv2ray; MTU=1400; конфигурация и секреты не записываются");
         controller.startLoop(config, tun.getFd());
         DebugLog.i(this,"XRAY","StartLoop вернулся; isRunning="+controller.getIsRunning());
         if (!controller.getIsRunning()) throw new IllegalStateException("Xray core did not start");
