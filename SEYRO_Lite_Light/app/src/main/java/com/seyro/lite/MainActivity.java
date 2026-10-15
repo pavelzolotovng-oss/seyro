@@ -632,15 +632,13 @@ public class MainActivity extends Activity {
                 "Выбор транспорта доступен после отключения.");
             return;
         }
-        if(!profileLink.isEmpty() && availableProfiles.isEmpty()) {
-            loadProfilesForManualChoice();
-            return;
-        }
-        if(availableProfiles.isEmpty()) {
+        if(profileLink.isEmpty()) {
             showProfile();
             return;
         }
-        showProfilePicker(availableProfiles);
+        // Always fetch the current subscription list when the user opens the picker,
+        // so newly added server profiles appear without restarting the app. No toast.
+        loadProfilesForManualChoice();
     }
 
     private void loadProfilesForManualChoice() {
@@ -976,6 +974,7 @@ public class MainActivity extends Activity {
 
     private volatile boolean subscriptionRefreshInProgress=false;
     private long lastSubscriptionRefreshAt=0L;
+    private boolean startupRefreshToastPending=true;
 
     private void refreshSubscriptionMetadataInBackground() {
         refreshSubscriptionMetadataInBackground(false);
@@ -1009,6 +1008,10 @@ public class MainActivity extends Activity {
                         updateProfileSubscriptionState();
                     });
                     DebugLog.i(this,"SUBSCRIPTION","Кэш подписки обновлён при запуске; HTTP "+code);
+                    if(startupRefreshToastPending) {
+                        startupRefreshToastPending=false;
+                        Toast.makeText(MainActivity.this,"Данные подписки обновлены",Toast.LENGTH_SHORT).show();
+                    }
                 } else DebugLog.w(this,"SUBSCRIPTION","Обновление метаданных при запуске: HTTP "+code);
             } catch(Exception e) {
                 DebugLog.w(this,"SUBSCRIPTION","Не удалось обновить метаданные при запуске: "+e.getClass().getSimpleName());
