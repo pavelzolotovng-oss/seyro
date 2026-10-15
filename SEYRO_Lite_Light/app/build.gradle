@@ -1,4 +1,8 @@
 plugins { id 'com.android.application' }
+
+// GitHub Actions supplies a monotonically increasing run number. Local builds
+// use a fallback version so the app always has valid Android package metadata.
+def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '13').toInteger()
 android {
     namespace 'com.seyro.lite'
     compileSdk 35
@@ -6,8 +10,8 @@ android {
         applicationId 'com.seyro.lite'
         minSdk 29
         targetSdk 35
-        versionCode 12
-        versionName '0.7.12'
+        versionCode buildNumber
+        versionName "0.7.13+${buildNumber}"
     }
     signingConfigs {
         stable {
