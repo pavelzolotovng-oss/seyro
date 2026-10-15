@@ -37,6 +37,11 @@ public class MainActivity extends Activity {
     private String profileLink="";
     private boolean demoOn=false;
     private String selectedConfig="";
+    private java.util.ArrayList<ProfileOption> availableProfiles=new java.util.ArrayList<>();
+    private static class ProfileOption {
+        final String label, transport, config;
+        ProfileOption(String label,String transport,String config) { this.label=label; this.transport=transport; this.config=config; }
+    }
     private static final int VPN_PERMISSION_REQUEST=71;
     private static final String APP_VERSION="0.6-light";
     private boolean vpnStateReceiverRegistered=false;
@@ -204,7 +209,7 @@ public class MainActivity extends Activity {
                         .setMessage("Поддерживаются ссылки https://, http:// и отдельные профили vless://.")
                         .setPositiveButton("OK",null).show(); return;
                 }
-                profileLink=value; prefs.edit().putString("subscription_link",profileLink).apply();
+                profileLink=value; selectedConfig=""; availableProfiles.clear(); prefs.edit().putString("subscription_link",profileLink).apply();
                 selectedConfig=""; DebugLog.i(this,"PROFILE","Ссылка подписки "+(profileLink.isEmpty()?"удалена":"сохранена; значение скрыто"));
                 refreshProfileState();
             }).show();
@@ -262,10 +267,12 @@ public class MainActivity extends Activity {
         if(!selectedConfig.isEmpty()) { requestVpnPermissionAndStart(); return; }
         connect.setEnabled(false); connect.setText("Загрузка профиля…");
         new Thread(() -> {
-            String error=null, config=null;
-            try { config=fetchAndBuildConfig(profileLink); }
+            String error=null;
+            java.util.ArrayList<ProfileOption> configs=null;
+            try { configs=fetchAndBuildConfigs(profileLink); }
             catch(Exception e) { error=e.getMessage()==null?"Не удалось прочитать подписку":e.getMessage(); DebugLog.e(this,"SUBSCRIPTION","Ошибка загрузки/разбора: "+e.getClass().getSimpleName()+": "+error); }
-            final String result=config, problem=error;
+            final java.util.ArrayList<ProfileOption> result=configs;
+            final String problem=error;
             runOnUiThread(() -> {
                 connect.setEnabled(true); connect.setText("Подключить");
                 if(problem!=null) {
@@ -274,15 +281,42 @@ public class MainActivity extends Activity {
                         .setNegativeButton("Закрыть",null).show();
                     return;
                 }
-                selectedConfig=result;
-                DebugLog.i(this,"SUBSCRIPTION","Конфигурация собрана; длина="+result.length()+" символов; содержимое не записывается");
-                hint.setText("Профиль загружен. Нажмите «Подключить» для запуска VPN.");
-                requestVpnPermissionAndStart();
+                availableProfiles=result;
+                if(result.size()>1) {
+                    String[] labels=new String[result.size()];
+                    for(int i=0;i<result.size();i++) labels[i]=result.get(i).label+" — "+result.get(i).transport.toUpperCase(java.util.Locale.ROOT);
+                    new AlertDialog.Builder(this).setTitle("Выберите профиль подключения")
+                        .setMessage("Проверьте TCP первым. Если сайты не откроются, отключитесь и попробуйте другой транспорт.")
+                        .setItems(labels,(d,which)->selectProfile(result.get(which)))
+                        .setNegativeButton("Отмена",null).show();
+                } else selectProfile(result.get(0));
             });
         }).start();
     }
 
-    private String fetchAndBuildConfig(String link) throws Exception {
+    private void selectProfile(ProfileOption option) {
+        selectedConfig=option.config;
+        DebugLog.i(this,"PROFILE","Выбран профиль: "+option.label+"; transport="+option.transport);
+        hint.setText("Профиль: "+option.label+" ("+option.transport.toUpperCase(java.util.Locale.ROOT)+")");
+        requestVpnPermissionAndStart();
+    }
+
+    private String detectTransport(String config) {
+        try {
+            JSONObject root=new JSONObject(config);
+            JSONArray outbounds=root.optJSONArray("outbounds");
+            if(outbounds!=null) for(int i=0;i<outbounds.length();i++) {
+                JSONObject o=outbounds.optJSONObject(i);
+                if(o!=null && "vless".equalsIgnoreCase(o.optString("protocol"))) {
+                    JSONObject stream=o.optJSONObject("streamSettings");
+                    return stream==null?"tcp":stream.optString("network","tcp");
+                }
+            }
+        } catch(Exception ignored) {}
+        return "unknown";
+    }
+
+    private java.util.ArrayList<ProfileOption> fetchAndBuildConfigs(String link) throws Exception {
         DebugLog.i(this,"SUBSCRIPTION","Начата загрузка профиля; ссылка скрыта");
         URL url=new URL(link);
         if(!"https".equalsIgnoreCase(url.getProtocol()) && !"http".equalsIgnoreCase(url.getProtocol()))
@@ -303,12 +337,19 @@ public class MainActivity extends Activity {
             // Some providers return a JSON array of complete Xray profiles instead of vless:// links.
             if(body.startsWith("[") || body.startsWith("{")) {
                 try {
-                    JSONArray profiles = body.startsWith("[") ? new JSONArray(body)
-                        : new JSONArray().put(new JSONObject(body));
+                    JSONArray profiles = body.startsWith("[") ? new JSONArray(body) : new JSONArray().put(new JSONObject(body));
+                    java.util.ArrayList<ProfileOption> parsed=new java.util.ArrayList<>();
                     for(int i=0;i<profiles.length();i++) {
-                        try { return buildJsonProfileConfig(profiles.getJSONObject(i)); }
-                        catch(Exception ignored) { /* Try the next profile. */ }
+                        JSONObject p=profiles.optJSONObject(i); if(p==null) continue;
+                        try {
+                            String cfg=buildJsonProfileConfig(p);
+                            String label=p.optString("remarks",p.optString("name","Профиль "+(i+1)));
+                            String transport=detectTransport(cfg);
+                            parsed.add(new ProfileOption(label,transport,cfg));
+                            DebugLog.i(this,"PROFILE","Найден профиль #"+(i+1)+": "+label+"; transport="+transport);
+                        } catch(Exception ex) { DebugLog.w(this,"PROFILE","Пропущен профиль #"+(i+1)+": "+ex.getMessage()); }
                     }
+                    if(!parsed.isEmpty()) return parsed;
                 } catch(org.json.JSONException ignored) { /* Continue with Base64/link parsing. */ }
             }
             // Subscription providers may return plain links, standard Base64, or URL-safe Base64.
@@ -329,12 +370,19 @@ public class MainActivity extends Activity {
             // A Base64 subscription may decode to JSON rather than to vless:// links.
             if(body.startsWith("[") || body.startsWith("{")) {
                 try {
-                    JSONArray profiles = body.startsWith("[") ? new JSONArray(body)
-                        : new JSONArray().put(new JSONObject(body));
+                    JSONArray profiles = body.startsWith("[") ? new JSONArray(body) : new JSONArray().put(new JSONObject(body));
+                    java.util.ArrayList<ProfileOption> parsed=new java.util.ArrayList<>();
                     for(int i=0;i<profiles.length();i++) {
-                        try { return buildJsonProfileConfig(profiles.getJSONObject(i)); }
-                        catch(Exception ignored) { /* Try the next profile. */ }
+                        JSONObject p=profiles.optJSONObject(i); if(p==null) continue;
+                        try {
+                            String cfg=buildJsonProfileConfig(p);
+                            String label=p.optString("remarks",p.optString("name","Профиль "+(i+1)));
+                            String transport=detectTransport(cfg);
+                            parsed.add(new ProfileOption(label,transport,cfg));
+                            DebugLog.i(this,"PROFILE","Найден профиль #"+(i+1)+": "+label+"; transport="+transport);
+                        } catch(Exception ex) { DebugLog.w(this,"PROFILE","Пропущен профиль #"+(i+1)+": "+ex.getMessage()); }
                     }
+                    if(!parsed.isEmpty()) return parsed;
                 } catch(org.json.JSONException ignored) { /* Continue with link parsing. */ }
             }
             for(String line:body.split("\\r?\\n")) {
@@ -344,8 +392,14 @@ public class MainActivity extends Activity {
                     int linkEnd=candidate.indexOf(' ',linkStart);
                     if(linkEnd>linkStart) candidate=candidate.substring(linkStart,linkEnd);
                     else candidate=candidate.substring(linkStart);
-                    try { return buildVlessConfig(candidate); }
-                    catch(Exception ignored) { /* Try the next VLESS entry, if any. */ }
+                    try {
+                        String cfg=buildVlessConfig(candidate);
+                        java.util.ArrayList<ProfileOption> one=new java.util.ArrayList<>();
+                        String label="VLESS-профиль";
+                        int hash=candidate.lastIndexOf('#'); if(hash>=0 && hash<candidate.length()-1) label=URLDecoder.decode(candidate.substring(hash+1),"UTF-8");
+                        one.add(new ProfileOption(label,detectTransport(cfg),cfg));
+                        return one;
+                    } catch(Exception ignored) { /* Try the next VLESS entry, if any. */ }
                 }
             }
             throw new IllegalStateException("Ссылка открылась, но формат ответа подписки не распознан. Нужен список ссылок VLESS + REALITY; сервер мог вернуть другой формат или сообщение об ошибке.");
