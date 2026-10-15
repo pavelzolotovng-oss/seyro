@@ -245,7 +245,8 @@ public class MainActivity extends Activity {
     private void showProfile() {
         final boolean hasProfile=!profileLink.trim().isEmpty();
         LinearLayout box=column();
-        padding(box,dp(20),dp(8),dp(20),dp(4));
+        padding(box,dp(20),dp(18),dp(20),dp(18));
+        box.setBackground(shape(white,dp(26),0));
         TextView icon=text(hasProfile?"✓":"＋",26,white,true);
         icon.setGravity(Gravity.CENTER);
         icon.setBackground(shape(hasProfile?green:blue,dp(18),0));
@@ -335,9 +336,21 @@ public class MainActivity extends Activity {
         actions.addView(save,saveP);
 
         AlertDialog dialog=new AlertDialog.Builder(this)
-            .setTitle("Профиль и подключение")
             .setView(box)
             .create();
+        dialog.setOnShowListener(ignored->{
+            Window window=dialog.getWindow();
+            if(window!=null) {
+                window.setBackgroundDrawableResource(android.R.color.transparent);
+                window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                WindowManager.LayoutParams params=window.getAttributes();
+                params.width=getResources().getDisplayMetrics().widthPixels-dp(32);
+                params.height=WindowManager.LayoutParams.WRAP_CONTENT;
+                params.gravity=Gravity.CENTER;
+                params.dimAmount=0.58f;
+                window.setAttributes(params);
+            }
+        });
         cancel.setOnClickListener(v->dialog.dismiss());
         save.setOnClickListener(v->{
             String value=input.getText().toString().trim();
