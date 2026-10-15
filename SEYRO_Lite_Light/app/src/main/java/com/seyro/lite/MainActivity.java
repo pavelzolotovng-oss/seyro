@@ -32,7 +32,7 @@ import android.widget.*;
 public class MainActivity extends Activity {
     private final int bg=0xfff3f7ff, white=0xffffffff, ink=0xff14233b, muted=0xff738198,
         line=0xffe2eaf6, blue=0xff2864e8, paleBlue=0xffeaf2ff, green=0xff118568;
-    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge,userGreeting;
+    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge,userGreeting,subscriptionExpiryText,trafficSummary,trafficPercent;\n    private View trafficProgressFill;\n    private LinearLayout trafficBarTrack;
     private volatile String subscriptionTitle="", subscriptionAnnounce="";
     private volatile long trafficUpload=-1, trafficDownload=-1, trafficTotal=-1, subscriptionExpire=-1;
     private String activeTransport="";
@@ -108,6 +108,8 @@ public class MainActivity extends Activity {
 
         add(root,text("ВАШ ЛИЧНЫЙ VPN",10,blue,true),28);
         userGreeting=text(greetingText(),25,ink,true); userGreeting.setLineSpacing(0f,1.02f); add(root,userGreeting,6);
+        subscriptionExpiryText=text("Подписка активна до: проверяем…",13,green,true);
+        add(root,subscriptionExpiryText,dp(7));
         add(root,text("Безопасный доступ — в одно касание.",14,muted,false),8);
 
         LinearLayout hero=column(); padding(hero,20,22,20,20); hero.setBackground(shape(white,26,line)); hero.setElevation(2f);
@@ -126,6 +128,30 @@ public class MainActivity extends Activity {
         connect=text("⏻    Подключить",16,white,true); connect.setGravity(Gravity.CENTER);
         padding(connect,16,16,16,16); connect.setBackground(shape(blue,17,0)); connect.setElevation(2f); add(hero,connect,18);
         connect.setOnClickListener(v->onConnect());
+
+        LinearLayout trafficCard=column();
+        padding(trafficCard,dp(14),dp(12),dp(14),dp(12));
+        trafficCard.setBackground(shape(0xfff7faff,dp(16),line));
+        add(hero,trafficCard,dp(12));
+        LinearLayout trafficHeader=new LinearLayout(this);
+        trafficHeader.setGravity(Gravity.CENTER_VERTICAL);
+        trafficHeader.addView(text("ТРАФИК ПОДПИСКИ",11,muted,true),
+            new LinearLayout.LayoutParams(0,-2,1));
+        trafficPercent=text("—",13,blue,true);
+        trafficHeader.addView(trafficPercent);
+        trafficCard.addView(trafficHeader);
+        trafficSummary=text("Загрузка данных о трафике…",12,muted,false);
+        add(trafficCard,trafficSummary,dp(5));
+        trafficBarTrack=new LinearLayout(this);
+        trafficBarTrack.setBackground(shape(0xffe2eaf6,dp(20),0));
+        trafficBarTrack.setClipToOutline(true);
+        trafficProgressFill=new View(this);
+        trafficProgressFill.setBackground(shape(blue,dp(20),0));
+        trafficBarTrack.addView(trafficProgressFill,new LinearLayout.LayoutParams(0,dp(7)));
+        LinearLayout.LayoutParams trackP=new LinearLayout.LayoutParams(-1,dp(7));
+        trackP.topMargin=dp(9);
+        trafficCard.addView(trafficBarTrack,trackP);
+        updateSubscriptionWidgets();
 
         LinearLayout profile=card(); padding(profile,16,5,16,5); profile.setElevation(1f); add(root,profile,14);
         profile.addView(menuRow("Профиль","Ссылка и параметры аккаунта","↗",()->showProfile()));
@@ -185,6 +211,7 @@ public class MainActivity extends Activity {
             updateProtocolBadge();
         }
         if(subscriptionState!=null) subscriptionState.setText(profileLink.isEmpty()?"Не настроена":"Профиль добавлен");
+        updateSubscriptionWidgets();
     }
 
     private void updateProtocolBadge() {
@@ -430,6 +457,50 @@ public class MainActivity extends Activity {
             .setPositiveButton(profileLink.isEmpty()?"Добавить ссылку":"ОК",(d,w)->{if(profileLink.isEmpty())showProfile();}).show();
     }
 
+    private void updateSubscriptionWidgets() {
+        if(subscriptionExpiryText!=null) {
+            if(profileLink.isEmpty()) {
+                subscriptionExpiryText.setText("Добавьте ссылку, чтобы проверить подписку");
+                subscriptionExpiryText.setTextColor(muted);
+            } else if(subscriptionExpire>0) {
+                java.text.SimpleDateFormat fmt=new java.text.SimpleDateFormat("dd.MM.yyyy 'в' HH:mm",java.util.Locale.getDefault());
+                subscriptionExpiryText.setText("Подписка активна до "+fmt.format(new java.util.Date(subscriptionExpire*1000L)));
+                subscriptionExpiryText.setTextColor(green);
+            } else {
+                subscriptionExpiryText.setText("Срок подписки появится после проверки");
+                subscriptionExpiryText.setTextColor(muted);
+            }
+        }
+        if(trafficSummary==null || trafficPercent==null || trafficProgressFill==null || trafficBarTrack==null) return;
+        if(profileLink.isEmpty()) {
+            trafficPercent.setText("—");
+            trafficSummary.setText("Добавьте ссылку подписки");
+            trafficProgressFill.setVisibility(View.GONE);
+            return;
+        }
+        if(trafficTotal<=0 || (trafficUpload<0 && trafficDownload<0)) {
+            trafficPercent.setText("—");
+            trafficSummary.setText("Нет данных о лимите трафика от сервера");
+            trafficProgressFill.setVisibility(View.GONE);
+            return;
+        }
+        long used=Math.max(0,trafficUpload)+Math.max(0,trafficDownload);
+        int percent=(int)Math.min(100,Math.round(used*100.0/trafficTotal));
+        trafficPercent.setText(percent+"%");
+        trafficSummary.setText(formatBytes(used)+" из "+formatBytes(trafficTotal)+" · осталось "+formatBytes(Math.max(0,trafficTotal-used)));
+        trafficProgressFill.setVisibility(View.VISIBLE);
+        trafficProgressFill.setBackground(shape(percent>=90?0xffd94b55:blue,dp(20),0));
+        trafficBarTrack.post(()->{
+            int width=trafficBarTrack.getWidth();
+            if(width>0) {
+                LinearLayout.LayoutParams p=(LinearLayout.LayoutParams)trafficProgressFill.getLayoutParams();
+                p.width=(int)(width*percent/100.0);
+                p.height=dp(7);
+                trafficProgressFill.setLayoutParams(p);
+            }
+        });
+    }
+
     private String greetingText() {
         if(!subscriptionAnnounce.isEmpty()) return subscriptionAnnounce;
         if(!subscriptionTitle.isEmpty()) return "Добро пожаловать!\\n"+subscriptionTitle;
@@ -558,7 +629,10 @@ public class MainActivity extends Activity {
         try {
             int code=conn.getResponseCode();
             readSubscriptionMetadata(conn);
-            runOnUiThread(() -> { if(userGreeting!=null) userGreeting.setText(greetingText()); });
+            runOnUiThread(() -> {
+                if(userGreeting!=null) userGreeting.setText(greetingText());
+                updateSubscriptionWidgets();
+            });
             DebugLog.i(this,"SUBSCRIPTION","HTTP статус="+code+"; тип ответа="+conn.getContentType());
             if(code<200||code>=300) throw new IllegalStateException("Сервер подписки ответил HTTP "+code);
             ByteArrayOutputStream out=new ByteArrayOutputStream();
