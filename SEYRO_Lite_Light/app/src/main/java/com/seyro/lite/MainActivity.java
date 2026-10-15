@@ -577,6 +577,9 @@ public class MainActivity extends Activity {
         Window window=dialog.getWindow();
         if(window!=null) {
             window.setBackgroundDrawableResource(android.R.color.transparent);
+            // Remove Android's default dialog enter/exit animation: custom SEYRO cards
+            // should appear without the visible "window popping" effect.
+            window.setWindowAnimations(0);
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             WindowManager.LayoutParams params=window.getAttributes();
             params.width=getResources().getDisplayMetrics().widthPixels-dp(32);
