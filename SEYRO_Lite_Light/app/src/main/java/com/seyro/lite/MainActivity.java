@@ -273,6 +273,17 @@ public class MainActivity extends Activity {
                 byte[] buf=new byte[4096]; int n; while((n=in.read(buf))!=-1) { out.write(buf,0,n); if(out.size()>2_000_000) throw new IllegalStateException("Ответ подписки слишком большой"); }
             }
             String body=new String(out.toByteArray(),StandardCharsets.UTF_8).trim();
+            // Some providers return a JSON array of complete Xray profiles instead of vless:// links.
+            if(body.startsWith("[") || body.startsWith("{")) {
+                try {
+                    JSONArray profiles = body.startsWith("[") ? new JSONArray(body)
+                        : new JSONArray().put(new JSONObject(body));
+                    for(int i=0;i<profiles.length();i++) {
+                        try { return buildJsonProfileConfig(profiles.getJSONObject(i)); }
+                        catch(Exception ignored) { /* Try the next profile. */ }
+                    }
+                } catch(org.json.JSONException ignored) { /* Continue with Base64/link parsing. */ }
+            }
             // Subscription providers may return plain links, standard Base64, or URL-safe Base64.
             // Try decoding more than once, because some gateways wrap an already encoded subscription.
             for(int attempt=0;attempt<3 && !body.contains("vless://");attempt++) {
@@ -301,6 +312,62 @@ public class MainActivity extends Activity {
             }
             throw new IllegalStateException("Ссылка открылась, но формат ответа подписки не распознан. Нужен список ссылок VLESS + REALITY; сервер мог вернуть другой формат или сообщение об ошибке.");
         } finally { conn.disconnect(); }
+    }
+
+    private String buildJsonProfileConfig(JSONObject profile) throws Exception {
+        JSONArray sourceOutbounds=profile.optJSONArray("outbounds");
+        if(sourceOutbounds==null) throw new IllegalArgumentException("В JSON-профиле нет outbounds.");
+        JSONObject sourceProxy=null;
+        for(int i=0;i<sourceOutbounds.length();i++) {
+            JSONObject candidate=sourceOutbounds.optJSONObject(i);
+            if(candidate!=null && "vless".equalsIgnoreCase(candidate.optString("protocol"))) {
+                sourceProxy=candidate; break;
+            }
+        }
+        if(sourceProxy==null) throw new IllegalArgumentException("В JSON-профиле нет VLESS outbound.");
+        JSONObject sourceSettings=sourceProxy.optJSONObject("settings");
+        JSONArray vnexts=sourceSettings==null?null:sourceSettings.optJSONArray("vnext");
+        if(vnexts==null||vnexts.length()==0) throw new IllegalArgumentException("В JSON-профиле не указан сервер VLESS.");
+        JSONObject sourceVnext=vnexts.getJSONObject(0);
+        JSONArray sourceUsers=sourceVnext.optJSONArray("users");
+        if(sourceUsers==null||sourceUsers.length()==0) throw new IllegalArgumentException("В JSON-профиле не указан пользователь VLESS.");
+        JSONObject sourceUser=sourceUsers.getJSONObject(0);
+        JSONObject sourceStream=sourceProxy.optJSONObject("streamSettings");
+        if(sourceStream==null||!"reality".equalsIgnoreCase(sourceStream.optString("security")))
+            throw new IllegalArgumentException("Профиль VLESS не использует REALITY.");
+        JSONObject sourceReality=sourceStream.optJSONObject("realitySettings");
+        if(sourceReality==null||sourceReality.optString("publicKey").isEmpty())
+            throw new IllegalArgumentException("В профиле REALITY отсутствует публичный ключ.");
+
+        JSONObject user=new JSONObject().put("id",sourceUser.optString("id"))
+            .put("encryption",sourceUser.optString("encryption","none"));
+        if(!sourceUser.optString("flow").isEmpty()) user.put("flow",sourceUser.optString("flow"));
+        JSONObject vnext=new JSONObject().put("address",sourceVnext.optString("address"))
+            .put("port",sourceVnext.optInt("port")).put("users",new JSONArray().put(user));
+        JSONObject settings=new JSONObject().put("vnext",new JSONArray().put(vnext));
+        JSONObject reality=new JSONObject().put("serverName",sourceReality.optString("serverName",sourceVnext.optString("address")))
+            .put("fingerprint",sourceReality.optString("fingerprint","chrome"))
+            .put("publicKey",sourceReality.optString("publicKey"))
+            .put("shortId",sourceReality.optString("shortId",""))
+            .put("spiderX",sourceReality.optString("spiderX","/"));
+        String network=sourceStream.optString("network","tcp");
+        JSONObject stream=new JSONObject().put("network",network).put("security","reality").put("realitySettings",reality);
+        if("xhttp".equalsIgnoreCase(network) && sourceStream.optJSONObject("xhttpSettings")!=null)
+            stream.put("xhttpSettings",sourceStream.getJSONObject("xhttpSettings"));
+        if("grpc".equalsIgnoreCase(network) && sourceStream.optJSONObject("grpcSettings")!=null)
+            stream.put("grpcSettings",sourceStream.getJSONObject("grpcSettings"));
+        if("ws".equalsIgnoreCase(network) && sourceStream.optJSONObject("wsSettings")!=null)
+            stream.put("wsSettings",sourceStream.getJSONObject("wsSettings"));
+        JSONObject outbound=new JSONObject().put("tag","proxy").put("protocol","vless").put("settings",settings).put("streamSettings",stream);
+        JSONObject direct=new JSONObject().put("tag","direct").put("protocol","freedom");
+        JSONObject block=new JSONObject().put("tag","block").put("protocol","blackhole");
+        JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
+        JSONObject routing=new JSONObject().put("domainStrategy","AsIs")
+            .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy")));
+        JSONObject inbound=new JSONObject().put("tag","tun-in").put("listen","127.0.0.1").put("port",10808)
+            .put("protocol","socks").put("settings",new JSONObject().put("auth","noauth").put("udp",true));
+        return new JSONObject().put("log",new JSONObject().put("loglevel","warning"))
+            .put("inbounds",new JSONArray().put(inbound)).put("outbounds",outbounds).put("routing",routing).toString();
     }
 
     private String decode(String value) throws Exception {
