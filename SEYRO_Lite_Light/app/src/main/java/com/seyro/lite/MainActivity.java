@@ -416,22 +416,26 @@ public class MainActivity extends Activity {
 
         LinearLayout options=column();
         add(box,options,dp(16));
-        addSettingsOption(options,"Автоматический выбор",
+        LinearLayout autoOption=addSettingsOption(options,"Автоматический выбор",
             "Подключаться к первому доступному профилю","auto".equals(mode),
             ()->changeSelectionMode("auto"));
-        addSettingsOption(options,"Ручной выбор",
+        autoOption.setTag("mode_auto");
+        LinearLayout manualOption=addSettingsOption(options,"Ручной выбор",
             "Самостоятельно выбирать транспорт TCP или XHTTP",manual,
             ()->changeSelectionMode("manual"));
+        manualOption.setTag("mode_manual");
 
-        if(manual) {
-            TextView section=text("ПРОФИЛЬ ПОДКЛЮЧЕНИЯ",10,muted,true);
-            add(options,section,dp(12));
-            LinearLayout choose=rowCard("Выбрать профиль подключения",
-                "Текущий выбор: "+(activeTransport.isEmpty()?"не выбран":activeTransport.toUpperCase(java.util.Locale.ROOT)),
-                "›",false);
-            add(options,choose,dp(6));
-            choose.setOnClickListener(v->showProfileChoices());
-        }
+        TextView section=text("ПРОФИЛЬ ПОДКЛЮЧЕНИЯ",10,muted,true);
+        section.setTag("profile_section");
+        add(options,section,dp(12));
+        LinearLayout choose=rowCard("Выбрать профиль подключения",
+            "Текущий выбор: "+(activeTransport.isEmpty()?"не выбран":activeTransport.toUpperCase(java.util.Locale.ROOT)),
+            "›",false);
+        choose.setTag("profile_choice");
+        add(options,choose,dp(6));
+        choose.setOnClickListener(v->showProfileChoices());
+        section.setVisibility(manual?View.VISIBLE:View.GONE);
+        choose.setVisibility(manual?View.VISIBLE:View.GONE);
 
         LinearLayout refresh=rowCard("Обновить подписку",
             "Обновить сведения о сроке и трафике","↻",false);
@@ -475,7 +479,7 @@ public class MainActivity extends Activity {
         dialog.show();
     }
 
-    private void addSettingsOption(LinearLayout parent,String titleText,String description,
+    private LinearLayout addSettingsOption(LinearLayout parent,String titleText,String description,
                                    boolean selected,Runnable action) {
         LinearLayout item=column();
         padding(item,dp(13),dp(11),dp(13),dp(11));
@@ -492,6 +496,7 @@ public class MainActivity extends Activity {
         add(item,desc,dp(3));
         add(parent,item,dp(7));
         item.setOnClickListener(v->action.run());
+        return item;
     }
 
     private LinearLayout rowCard(String titleText,String description,String symbol,boolean selected) {
@@ -510,6 +515,48 @@ public class MainActivity extends Activity {
         return item;
     }
 
+    private void updateSettingsModeViews(View root,String mode) {
+        if(root==null) return;
+        updateModeCard(root.findViewWithTag("mode_auto"),"auto".equals(mode));
+        updateModeCard(root.findViewWithTag("mode_manual"),"manual".equals(mode));
+        View section=root.findViewWithTag("profile_section");
+        View choice=root.findViewWithTag("profile_choice");
+        int visibility="manual".equals(mode)?View.VISIBLE:View.GONE;
+        if(section!=null) section.setVisibility(visibility);
+        if(choice!=null) {
+            choice.setVisibility(visibility);
+            if(choice instanceof LinearLayout) {
+                LinearLayout card=(LinearLayout)choice;
+                if(card.getChildCount()>0 && card.getChildAt(0) instanceof LinearLayout) {
+                    LinearLayout row=(LinearLayout)card.getChildAt(0);
+                    if(row.getChildCount()>0 && row.getChildAt(0) instanceof TextView) {
+                        // The detail line is kept in sync with the currently selected transport.
+                        if(card.getChildCount()>1 && card.getChildAt(1) instanceof TextView) {
+                            ((TextView)card.getChildAt(1)).setText("Текущий выбор: "+
+                                (activeTransport.isEmpty()?"не выбран":activeTransport.toUpperCase(java.util.Locale.ROOT)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void updateModeCard(View view,boolean selected) {
+        if(!(view instanceof LinearLayout)) return;
+        LinearLayout card=(LinearLayout)view;
+        card.setBackground(shape(selected?paleBlue:0xfff7faff,dp(16),selected?blue:line));
+        if(card.getChildCount()>0 && card.getChildAt(0) instanceof LinearLayout) {
+            LinearLayout row=(LinearLayout)card.getChildAt(0);
+            for(int i=0;i<row.getChildCount();i++) {
+                View child=row.getChildAt(i);
+                if(child instanceof TextView && i==1) {
+                    ((TextView)child).setText(selected?"✓":"○");
+                    ((TextView)child).setTextColor(selected?blue:muted);
+                }
+            }
+        }
+    }
+
     private void changeSelectionMode(String next) {
         String old=prefs.getString("selection_mode","auto");
         boolean changed=!next.equals(old);
@@ -520,8 +567,11 @@ public class MainActivity extends Activity {
                 ?"Включён автоматический выбор"
                 :"Включён ручной выбор профиля",Toast.LENGTH_SHORT).show();
         }
-        if(settingsDialog!=null && settingsDialog.isShowing()) settingsDialog.dismiss();
-        new android.os.Handler(getMainLooper()).postDelayed(this::showSettings,120);
+        // Update the open settings card in place to avoid the dismiss/reopen flicker.
+        if(settingsDialog!=null && settingsDialog.isShowing()) {
+            View root=settingsDialog.findViewById(android.R.id.content);
+            updateSettingsModeViews(root,next);
+        }
     }
 
     private void styleCustomDialog(AlertDialog dialog,float dimAmount) {
@@ -675,8 +725,14 @@ public class MainActivity extends Activity {
 
         // Reopen the settings card so the selected transport is visible immediately,
         // without an extra confirmation dialog.
-        if(settingsDialog!=null && settingsDialog.isShowing()) settingsDialog.dismiss();
-        new android.os.Handler(getMainLooper()).postDelayed(this::showSettings,150);
+        if(settingsDialog!=null && settingsDialog.isShowing()) {
+            View root=settingsDialog.findViewById(android.R.id.content);
+            View choice=root==null?null:root.findViewWithTag("profile_choice");
+            if(choice instanceof LinearLayout && ((LinearLayout)choice).getChildCount()>1
+                && ((LinearLayout)choice).getChildAt(1) instanceof TextView) {
+                ((TextView)((LinearLayout)choice).getChildAt(1)).setText("Текущий выбор: "+activeTransport.toUpperCase(java.util.Locale.ROOT));
+            }
+        }
     }
 
     private void showSimpleStyledNotice(String titleText,String message) {
