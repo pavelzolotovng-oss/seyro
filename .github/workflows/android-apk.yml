@@ -40,9 +40,7 @@ jobs:
       - name: Download Xray Android library
         run: |
           mkdir -p SEYRO_Lite_Light/app/libs
-          curl -fL --retry 3 \\
-            https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.10/libv2ray.aar \\
-            -o SEYRO_Lite_Light/app/libs/libv2ray.aar
+          curl -fL --retry 3 https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.10/libv2ray.aar -o SEYRO_Lite_Light/app/libs/libv2ray.aar
       - name: Build debug APK
         working-directory: SEYRO_Lite_Light
         run: gradle --no-daemon assembleDebug

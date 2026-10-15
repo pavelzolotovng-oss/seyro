@@ -32,7 +32,9 @@ public class MainActivity extends Activity {
     private TextView connect,status,hint,profileLinkValue,subscriptionState;
     private SharedPreferences prefs;
     private String profileLink="";
-    private boolean demoOn=false;\n    private String selectedConfig="";\n    private static final int VPN_PERMISSION_REQUEST=71;
+    private boolean demoOn=false;
+    private String selectedConfig="";
+    private static final int VPN_PERMISSION_REQUEST=71;
 
     private GradientDrawable shape(int color,int radius,int stroke) {
         GradientDrawable d=new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius);
