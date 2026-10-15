@@ -488,6 +488,10 @@ public class MainActivity extends Activity {
         JSONObject inbound=new JSONObject().put("tag","tun-in").put("port",0)
             .put("protocol","tun").put("settings",new JSONObject().put("name","seyro").put("MTU",1400));
         return new JSONObject().put("log",new JSONObject().put("loglevel","debug"))
+            .put("stats",new JSONObject())
+            .put("policy",new JSONObject()
+                .put("levels",new JSONObject().put("0",new JSONObject().put("statsUserUplink",true).put("statsUserDownlink",true)))
+                .put("system",new JSONObject().put("statsOutboundUplink",true).put("statsOutboundDownlink",true)))
             .put("inbounds",new JSONArray().put(inbound)).put("outbounds",outbounds).put("routing",routing).toString();
     }
 
@@ -532,6 +536,10 @@ public class MainActivity extends Activity {
             .put("protocol","tun").put("settings",new JSONObject().put("name","seyro").put("MTU",1400));
         // Xray's native TUN inbound consumes the VpnService file descriptor passed to StartLoop.
         return new JSONObject().put("log",new JSONObject().put("loglevel","warning"))
+            .put("stats",new JSONObject())
+            .put("policy",new JSONObject()
+                .put("levels",new JSONObject().put("0",new JSONObject().put("statsUserUplink",true).put("statsUserDownlink",true)))
+                .put("system",new JSONObject().put("statsOutboundUplink",true).put("statsOutboundDownlink",true)))
             .put("inbounds",new JSONArray().put(inbound)).put("outbounds",outbounds).put("routing",routing).toString();
     }
 
