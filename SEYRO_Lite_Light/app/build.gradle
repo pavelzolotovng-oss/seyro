@@ -12,4 +12,5 @@ android {
 }
 dependencies {
     implementation files('libs/libv2ray.aar')
+    implementation files('libs/hev-socks5-tunnel.aar')
 }
