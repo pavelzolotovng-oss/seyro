@@ -273,16 +273,33 @@ public class MainActivity extends Activity {
                 byte[] buf=new byte[4096]; int n; while((n=in.read(buf))!=-1) { out.write(buf,0,n); if(out.size()>2_000_000) throw new IllegalStateException("Ответ подписки слишком большой"); }
             }
             String body=new String(out.toByteArray(),StandardCharsets.UTF_8).trim();
-            if(!body.contains("://")) {
+            // Subscription providers may return plain links, standard Base64, or URL-safe Base64.
+            // Try decoding more than once, because some gateways wrap an already encoded subscription.
+            for(int attempt=0;attempt<3 && !body.contains("vless://");attempt++) {
                 String compact=body.replaceAll("\\s+","");
-                try { body=new String(Base64.decode(compact,Base64.DEFAULT),StandardCharsets.UTF_8).trim(); }
-                catch(Exception ignored) {}
+                String decoded=null;
+                int[] flags={Base64.DEFAULT,Base64.URL_SAFE|Base64.NO_WRAP,Base64.NO_WRAP};
+                for(int flag:flags) {
+                    try {
+                        String candidate=new String(Base64.decode(compact,flag),StandardCharsets.UTF_8).trim();
+                        if(!candidate.isEmpty() && !candidate.equals(body)) { decoded=candidate; break; }
+                    } catch(Exception ignored) {}
+                }
+                if(decoded==null) break;
+                body=decoded;
             }
             for(String line:body.split("\\r?\\n")) {
                 String candidate=line.trim();
-                if(candidate.startsWith("vless://")) return buildVlessConfig(candidate);
+                int linkStart=candidate.indexOf("vless://");
+                if(linkStart>=0) {
+                    int linkEnd=candidate.indexOf(' ',linkStart);
+                    if(linkEnd>linkStart) candidate=candidate.substring(linkStart,linkEnd);
+                    else candidate=candidate.substring(linkStart);
+                    try { return buildVlessConfig(candidate); }
+                    catch(Exception ignored) { /* Try the next VLESS entry, if any. */ }
+                }
             }
-            throw new IllegalStateException("В подписке не найден профиль VLESS. Поддерживается список VLESS + REALITY.");
+            throw new IllegalStateException("Ссылка открылась, но формат ответа подписки не распознан. Нужен список ссылок VLESS + REALITY; сервер мог вернуть другой формат или сообщение об ошибке.");
         } finally { conn.disconnect(); }
     }
 
