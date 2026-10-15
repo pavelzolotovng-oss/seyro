@@ -465,7 +465,6 @@ public class MainActivity extends Activity {
         // xhttp mode/host/path, mux, packetEncoding, and future Xray options).
         // Only normalize the tag because the app's routing rule targets "proxy".
         JSONObject outbound=new JSONObject(sourceProxy.toString()).put("tag","proxy");
-        String network=sourceStream.optString("network","tcp");
         JSONObject direct=new JSONObject().put("tag","direct").put("protocol","freedom");
         JSONObject block=new JSONObject().put("tag","block").put("protocol","blackhole");
         JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
