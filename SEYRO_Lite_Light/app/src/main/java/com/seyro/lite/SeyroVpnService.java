@@ -181,7 +181,11 @@ public class SeyroVpnService extends VpnService {
                 long elapsed = System.currentTimeMillis() - startedAt;
                 DebugLog.i(this, "PROBE", "Xray outbound HTTP probe result=" + delay + " ms; elapsed=" + elapsed + " ms; target=generate_204");
             } catch (Exception e) {
-                DebugLog.w(this, "PROBE", "Xray outbound HTTP probe failed: " + e.getClass().getSimpleName() + "; elapsed=" + (System.currentTimeMillis() - startedAt) + " ms");
+                String detail = e.getMessage();
+                if (detail == null || detail.trim().isEmpty()) detail = e.toString();
+                detail = detail.replaceAll("(?i)vless://[^\\s]+", "vless://[redacted]");
+                if (detail.length() > 240) detail = detail.substring(0, 240);
+                DebugLog.w(this, "PROBE", "Xray outbound HTTP probe failed: " + e.getClass().getSimpleName() + "; detail=" + detail + "; elapsed=" + (System.currentTimeMillis() - startedAt) + " ms");
             }
         }, 5, 30, TimeUnit.SECONDS);
     }
