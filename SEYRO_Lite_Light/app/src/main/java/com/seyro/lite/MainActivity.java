@@ -299,6 +299,17 @@ public class MainActivity extends Activity {
                 if(decoded==null) break;
                 body=decoded;
             }
+            // A Base64 subscription may decode to JSON rather than to vless:// links.
+            if(body.startsWith("[") || body.startsWith("{")) {
+                try {
+                    JSONArray profiles = body.startsWith("[") ? new JSONArray(body)
+                        : new JSONArray().put(new JSONObject(body));
+                    for(int i=0;i<profiles.length();i++) {
+                        try { return buildJsonProfileConfig(profiles.getJSONObject(i)); }
+                        catch(Exception ignored) { /* Try the next profile. */ }
+                    }
+                } catch(org.json.JSONException ignored) { /* Continue with link parsing. */ }
+            }
             for(String line:body.split("\\r?\\n")) {
                 String candidate=line.trim();
                 int linkStart=candidate.indexOf("vless://");
