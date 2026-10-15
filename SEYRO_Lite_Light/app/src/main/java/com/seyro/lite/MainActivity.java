@@ -76,7 +76,7 @@ public class MainActivity extends Activity {
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false); scroll.setBackgroundColor(bg);
-        LinearLayout root=column(); padding(root,18,18,18,28); scroll.addView(root);
+        LinearLayout root=column(); padding(root,18,48,18,28); scroll.addView(root);
 
         LinearLayout header=new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         TextView mark=text("S",25,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(blue,17,0));
