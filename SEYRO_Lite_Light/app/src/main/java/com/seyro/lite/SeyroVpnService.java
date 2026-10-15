@@ -1,5 +1,9 @@
 package com.seyro.lite;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
@@ -14,6 +18,8 @@ public class SeyroVpnService extends VpnService {
     public static final String ACTION_STOP = "com.seyro.lite.STOP_VPN";
     public static final String EXTRA_CONFIG = "xray_config";
     private static final String TAG = "SEYRO-VPN";
+    private static final String CHANNEL_ID = "seyro_vpn";
+    private static final int NOTIFICATION_ID = 1;
     private ParcelFileDescriptor tun;
     private CoreController controller;
 
@@ -40,14 +46,38 @@ public class SeyroVpnService extends VpnService {
             return START_NOT_STICKY;
         }
         try {
+            startInForeground();
             startVpn(config);
             return START_NOT_STICKY;
         } catch (Exception e) {
             Log.e(TAG, "VPN start failed", e);
             stopVpn();
+            stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
         }
+    }
+
+    private void startInForeground() {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID, "SEYRO VPN", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("Статус VPN-подключения SEYRO");
+            manager.createNotificationChannel(channel);
+        }
+        Intent openApp = new Intent(this, MainActivity.class);
+        PendingIntent contentIntent = PendingIntent.getActivity(
+            this, 0, openApp, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification notification = new Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentTitle("SEYRO Lite")
+            .setContentText("VPN-подключение активно")
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setOngoing(true)
+            .setContentIntent(contentIntent)
+            .build();
+        startForeground(NOTIFICATION_ID, notification);
     }
 
     private void startVpn(String config) throws Exception {
@@ -82,12 +112,14 @@ public class SeyroVpnService extends VpnService {
 
     @Override public void onRevoke() {
         stopVpn();
+        stopForeground(true);
         stopSelf();
         super.onRevoke();
     }
 
     @Override public void onDestroy() {
         stopVpn();
+        stopForeground(true);
         super.onDestroy();
     }
 }
