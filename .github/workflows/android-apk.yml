@@ -42,8 +42,23 @@ jobs:
           mkdir -p SEYRO_Lite_Light/app/libs
           curl -fL --retry 3 https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.10/libv2ray.aar -o SEYRO_Lite_Light/app/libs/libv2ray.aar
           curl -fL --retry 3 https://github.com/heiher/hev-socks5-tunnel/releases/download/2.18.0/hev-socks5-tunnel.aar -o SEYRO_Lite_Light/app/libs/hev-socks5-tunnel.aar
-      - name: Build debug APK
+      - name: Configure persistent APK signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD in GitHub repository Actions secrets."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > SEYRO_Lite_Light/app/seyro-release.jks
+          test -s SEYRO_Lite_Light/app/seyro-release.jks
+      - name: Build signed APK
         working-directory: SEYRO_Lite_Light
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/SEYRO_Lite_Light/app/seyro-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle --no-daemon assembleDebug
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
