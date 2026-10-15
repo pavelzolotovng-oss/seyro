@@ -188,13 +188,13 @@ public class MainActivity extends Activity {
     private void updateProtocolBadge() {
         if(protocolBadge==null) return;
         String state=SeyroVpnService.vpnState;
+        String mode=prefs.getString("selection_mode","auto");
+        String modeLabel="auto".equals(mode)?"АВТОВЫБОР":"РУЧНОЙ ВЫБОР";
         String transport=activeTransport;
         if(transport.isEmpty() && !selectedConfig.isEmpty()) transport=detectTransport(selectedConfig);
-        if("connected".equals(state) && !transport.isEmpty())
-            protocolBadge.setText("VLESS + REALITY  ·  "+transport.toUpperCase(java.util.Locale.ROOT));
-        else if(!transport.isEmpty())
-            protocolBadge.setText("ВЫБРАН ПРОФИЛЬ  ·  "+transport.toUpperCase(java.util.Locale.ROOT));
-        else protocolBadge.setText("ПРОТОКОЛ НЕ ВЫБРАН");
+        String protocol=transport.isEmpty()?"ПРОТОКОЛ НЕ ВЫБРАН":"VLESS + REALITY  ·  "+transport.toUpperCase(java.util.Locale.ROOT);
+        if("connecting".equals(state)) protocolBadge.setText(modeLabel+"  ·  ПОДКЛЮЧЕНИЕ…");
+        else protocolBadge.setText(modeLabel+"  ·  "+protocol);
     }
 
     private View menuRow(String title,String subtitle,String icon,Runnable action) {
@@ -253,6 +253,7 @@ public class MainActivity extends Activity {
                 if(which==1 || which==2) {
                     String next=which==1?"auto":"manual";
                     prefs.edit().putString("selection_mode",next).apply();
+                    updateProtocolBadge();
                     new AlertDialog.Builder(this).setTitle("Режим выбора профиля")
                         .setMessage("Выбран режим: "+("auto".equals(next)?"Автоматический. Приложение выберет первый доступный профиль из подписки.":"Ручной. Перед подключением можно выбрать TCP или XHTTP."))
                         .setPositiveButton("Понятно",null).show();
