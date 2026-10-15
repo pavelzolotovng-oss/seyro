@@ -30,8 +30,8 @@ import android.view.WindowManager;
 import android.widget.*;
 
 public class MainActivity extends Activity {
-    private final int bg=0xfff5f7fc, white=0xffffffff, ink=0xff17243a, muted=0xff718096,
-        line=0xffe4eaf3, blue=0xff3267ee, paleBlue=0xffedf2ff, green=0xff138b68;
+    private final int bg=0xfff3f7ff, white=0xffffffff, ink=0xff14233b, muted=0xff738198,
+        line=0xffe2eaf6, blue=0xff2864e8, paleBlue=0xffeaf2ff, green=0xff118568;
     private TextView connect,status,hint,profileLinkValue,subscriptionState;
     private SharedPreferences prefs;
     private String profileLink="";
@@ -71,58 +71,58 @@ public class MainActivity extends Activity {
         prefs=getSharedPreferences("seyro_profile",MODE_PRIVATE);
         profileLink=prefs.getString("subscription_link","");
         Window w=getWindow();
-        w.setStatusBarColor(0xffedf7ff); w.setNavigationBarColor(0xffedf7ff);
+        w.setStatusBarColor(0xfff3f7ff); w.setNavigationBarColor(0xfff3f7ff);
         w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
-        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(0xffedf7ff);
-        LinearLayout root=column(); padding(root,20,14,20,26); scroll.addView(root);
+        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false); scroll.setBackgroundColor(bg);
+        LinearLayout root=column(); padding(root,18,18,18,28); scroll.addView(root);
 
         LinearLayout header=new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView mark=text("S",21,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(blue,16,0));
-        header.addView(mark,new LinearLayout.LayoutParams(46,46));
-        LinearLayout brand=column(); TextView name=text("SEYRO",21,ink,true); name.setLetterSpacing(.07f); brand.addView(name);
+        TextView mark=text("S",25,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(blue,17,0));
+        mark.setElevation(3f); header.addView(mark,new LinearLayout.LayoutParams(48,48));
+        LinearLayout brand=column(); TextView name=text("SEYRO",23,ink,true); name.setLetterSpacing(.07f); brand.addView(name);
         TextView tagline=text("LITE VPN",9,blue,true); tagline.setLetterSpacing(.18f); brand.addView(tagline);
         LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,-2,1); bp.leftMargin=11; header.addView(brand,bp);
         TextView settings=text("⚙",22,ink,true); settings.setGravity(Gravity.CENTER);
         header.addView(settings,new LinearLayout.LayoutParams(42,42)); settings.setOnClickListener(v->showSettings());
         root.addView(header);
 
-        add(root,text("ДОБРО ПОЖАЛОВАТЬ",11,blue,true),25);
-        add(root,text("Ваш интернет.\nПод защитой.",29,ink,true),5);
-        add(root,text("Подключайтесь к SEYRO в одно касание.",13,muted,false),6);
+        add(root,text("ВАШ ЛИЧНЫЙ VPN",10,blue,true),28);
+        TextView headline=text("Ваш интернет.\nПод защитой.",32,ink,true); headline.setLineSpacing(0f,1.02f); add(root,headline,6);
+        add(root,text("Безопасный доступ — в одно касание.",14,muted,false),8);
 
-        LinearLayout hero=column(); padding(hero,19,19,19,20); hero.setBackground(shape(white,24,0));
-        add(root,hero,19);
+        LinearLayout hero=column(); padding(hero,20,22,20,20); hero.setBackground(shape(white,26,line)); hero.setElevation(2f);
+        add(root,hero,18);
         LinearLayout center=column(); center.setGravity(Gravity.CENTER);
-        TextView shield=text("S",35,blue,true); shield.setGravity(Gravity.CENTER);
-        shield.setBackground(shape(0xffe4f3ff,100,0));
-        LinearLayout.LayoutParams shieldP=new LinearLayout.LayoutParams(104,104); shieldP.gravity=Gravity.CENTER;
+        TextView shield=text("S",31,blue,true); shield.setGravity(Gravity.CENTER);
+        shield.setBackground(shape(0xffe7f0ff,100,0));
+        LinearLayout.LayoutParams shieldP=new LinearLayout.LayoutParams(76,76); shieldP.gravity=Gravity.CENTER;
         center.addView(shield,shieldP);
         status=text("●  НЕ ПОДКЛЮЧЕНО",12,muted,true); status.setGravity(Gravity.CENTER);
         add(center,status,16); hero.addView(center);
-        hint=text(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.",12,muted,false);
+        hint=text(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.",13,muted,false);
         hint.setGravity(Gravity.CENTER); add(hero,hint,8);
         connect=text("⏻    Подключить",16,white,true); connect.setGravity(Gravity.CENTER);
-        padding(connect,16,15,16,15); connect.setBackground(shape(blue,16,0)); add(hero,connect,18);
+        padding(connect,16,16,16,16); connect.setBackground(shape(blue,17,0)); connect.setElevation(2f); add(hero,connect,18);
         connect.setOnClickListener(v->onConnect());
 
-        LinearLayout profile=card(); padding(profile,16,14,16,14); add(root,profile,14);
+        LinearLayout profile=card(); padding(profile,16,5,16,5); profile.setElevation(1f); add(root,profile,14);
         profile.addView(menuRow("Профиль","Ссылка и параметры аккаунта","↗",()->showProfile()));
         profile.setOnClickListener(v->showProfile());
 
         LinearLayout pair=new LinearLayout(this); LinearLayout.LayoutParams pairP=new LinearLayout.LayoutParams(-1,-2);
         pairP.topMargin=12; root.addView(pair,pairP);
-        LinearLayout sub=card(); LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-2,1); hp.rightMargin=6;
+        LinearLayout sub=card(); sub.setElevation(1f); LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-2,1); hp.rightMargin=6;
         pair.addView(sub,hp); sub.setOnClickListener(v->showSubscription());
         sub.addView(text("ПОДПИСКА",10,muted,true));
         subscriptionState=text(profileLink.isEmpty()?"Не настроена":"Профиль добавлен",14,ink,true);
         add(sub,subscriptionState,7);
-        LinearLayout help=card(); LinearLayout.LayoutParams hp2=new LinearLayout.LayoutParams(0,-2,1); hp2.leftMargin=6;
+        LinearLayout help=card(); help.setElevation(1f); LinearLayout.LayoutParams hp2=new LinearLayout.LayoutParams(0,-2,1); hp2.leftMargin=6;
         pair.addView(help,hp2); help.setOnClickListener(v->showHelp());
         help.addView(text("НУЖНА ПОМОЩЬ?",10,muted,true)); add(help,text("Поддержка  ›",14,blue,true),7);
 
-        TextView footer=text("SEYRO LITE  •  ЗАЩИЩЁННЫЙ ДОСТУП",9,0xff9aa6b8,true);
+        TextView footer=text("SEYRO LITE  ·  ЗАЩИЩЁННЫЙ ДОСТУП",9,0xff93a0b5,true);
         footer.setGravity(Gravity.CENTER); add(root,footer,20);
         setContentView(scroll);
         renderVpnState();
