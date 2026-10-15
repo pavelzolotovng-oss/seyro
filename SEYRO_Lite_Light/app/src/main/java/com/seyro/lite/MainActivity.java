@@ -461,9 +461,37 @@ public class MainActivity extends Activity {
                 .setItems(labels,(d,which)->selectProfileWithoutStarting(availableProfiles.get(which)))
                 .setNegativeButton("Отмена",null).show();
         } else {
-            selectedConfig="";
-            onConnect();
+            loadProfilesForManualChoice();
         }
+    }
+
+    private void loadProfilesForManualChoice() {
+        if(profileLink.isEmpty()) { showProfile(); return; }
+        Toast.makeText(this,"Загружаем профили подписки…",Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            java.util.ArrayList<ProfileOption> result=null;
+            String problem=null;
+            try { result=fetchAndBuildConfigs(profileLink); }
+            catch(Exception e) { problem=e.getMessage()==null?"Не удалось загрузить профили":e.getMessage(); }
+            final java.util.ArrayList<ProfileOption> loaded=result;
+            final String error=problem;
+            runOnUiThread(() -> {
+                if(error!=null || loaded==null || loaded.isEmpty()) {
+                    new AlertDialog.Builder(this).setTitle("Не удалось загрузить профили")
+                        .setMessage(error==null?"Подписка не содержит доступных профилей.":error)
+                        .setPositiveButton("Повторить",(d,w)->loadProfilesForManualChoice())
+                        .setNegativeButton("Закрыть",null).show();
+                    return;
+                }
+                availableProfiles=loaded;
+                String[] labels=new String[loaded.size()];
+                for(int i=0;i<loaded.size();i++) labels[i]=loaded.get(i).label+" — "+loaded.get(i).transport.toUpperCase(java.util.Locale.ROOT);
+                new AlertDialog.Builder(this).setTitle("Выберите профиль подключения")
+                    .setMessage("Выберите транспорт TCP или XHTTP.")
+                    .setItems(labels,(d,which)->selectProfileWithoutStarting(loaded.get(which)))
+                    .setNegativeButton("Отмена",null).show();
+            });
+        }).start();
     }
 
     private void selectProfileWithoutStarting(ProfileOption option) {
@@ -698,6 +726,15 @@ public class MainActivity extends Activity {
         if("connecting".equals(SeyroVpnService.vpnState)||"disconnecting".equals(SeyroVpnService.vpnState)) return;
         if(profileLink.isEmpty()) { showProfile(); return; }
         if(!selectedConfig.isEmpty()) { requestVpnPermissionAndStart(); return; }
+        if("manual".equals(prefs.getString("selection_mode","auto"))) {
+            new AlertDialog.Builder(this)
+                .setTitle("Выберите профиль в настройках")
+                .setMessage("В ручном режиме сначала выберите TCP или XHTTP через ⚙ → «Выбрать профиль подключения».")
+                .setPositiveButton("Открыть настройки",(d,w)->showSettings())
+                .setNegativeButton("Отмена",null)
+                .show();
+            return;
+        }
         connect.setEnabled(false); connect.setText("Загрузка профиля…");
         new Thread(() -> {
             String error=null;
