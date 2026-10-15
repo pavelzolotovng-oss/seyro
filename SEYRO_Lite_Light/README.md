@@ -1,4 +1,4 @@
-# SEYRO Lite 0.7.12
+# SEYRO Lite — current development build
 
 Native Android VPN client written in Java. The active development branch is `feature/profile-subscription-link`.
 
@@ -10,7 +10,7 @@ Native Android VPN client written in Java. The active development branch is `fea
 - Profile/subscription URL is stored locally using Android SharedPreferences.
 - Profile selection supports automatic and manual modes.
 - The profile dialog supports pasting a link from the clipboard and saving or cancelling changes.
-- Version: `0.7.12` (`versionCode 12`).
+- Version name and Android `versionCode` are generated from the GitHub Actions run number for each CI build.
 - Application ID: `com.seyro.lite`.
 - Minimum Android: Android 10 (API 29).
 - Compile/target SDK: Android 35.
@@ -28,7 +28,7 @@ To build manually:
 3. Choose branch `feature/profile-subscription-link` and press **Run workflow**.
 4. Open the successful run and download the `seyro-lite-debug-apk` artifact.
 
-The workflow downloads the required Xray and HEV AAR libraries, then builds with Gradle 8.9 and JDK 17.
+The workflow downloads the required Xray and HEV AAR libraries, then builds with Gradle 8.9 and JDK 17. Each CI run receives its own monotonically increasing `versionCode`; the app footer and Xray User-Agent use the same generated `BuildConfig.VERSION_NAME`.
 
 ## Persistent APK signing
 
