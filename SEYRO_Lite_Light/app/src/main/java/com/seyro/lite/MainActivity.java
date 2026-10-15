@@ -412,11 +412,10 @@ public class MainActivity extends Activity {
         items.add("Журнал отладки");
         actions.add("debug");
 
+        // Do not combine setMessage() and setItems(): on Android this can make
+        // the settings list confusing or hide the actionable choices on some devices.
         new AlertDialog.Builder(this)
             .setTitle("Настройки подключения")
-            .setMessage(manual
-                ?"Ручной режим позволяет самостоятельно выбрать транспорт подключения."
-                :"В автоматическом режиме используется первый доступный профиль подписки.")
             .setItems(items.toArray(new String[0]),(dialog,which)->{
                 String action=actions.get(which);
                 if("debug".equals(action)) { showDebugLog(); return; }
@@ -726,7 +725,43 @@ public class MainActivity extends Activity {
         if("connecting".equals(SeyroVpnService.vpnState)||"disconnecting".equals(SeyroVpnService.vpnState)) return;
         if(profileLink.isEmpty()) { showProfile(); return; }
         if(!selectedConfig.isEmpty()) { requestVpnPermissionAndStart(); return; }
-        if("manual".equals(prefs.getString("selection_mode","auto"))) {
+        // The transport preference survives app restarts; restore its matching config
+        // from the subscription before asking the user to choose again.
+        boolean manualMode="manual".equals(prefs.getString("selection_mode","auto"));
+        String savedTransport=prefs.getString("selected_transport","");
+        if(manualMode && !savedTransport.isEmpty()) {
+            connect.setEnabled(false); connect.setText("Восстанавливаем профиль…");
+            new Thread(() -> {
+                java.util.ArrayList<ProfileOption> configs=null;
+                String problem=null;
+                try { configs=fetchAndBuildConfigs(profileLink); }
+                catch(Exception e) { problem=e.getMessage()==null?"Не удалось загрузить профили":e.getMessage(); }
+                final java.util.ArrayList<ProfileOption> loaded=configs;
+                final String error=problem;
+                runOnUiThread(() -> {
+                    connect.setEnabled(true); connect.setText("Подключить");
+                    if(error==null && loaded!=null) {
+                        availableProfiles=loaded;
+                        for(ProfileOption option:loaded) {
+                            if(savedTransport.equalsIgnoreCase(option.transport)) {
+                                selectProfile(option);
+                                return;
+                            }
+                        }
+                    }
+                    new AlertDialog.Builder(this)
+                        .setTitle("Выберите профиль в настройках")
+                        .setMessage(error==null
+                            ?"Сохранённый транспорт не найден в подписке. Выберите TCP или XHTTP через ⚙ → «Выбрать профиль подключения»."
+                            :"Не удалось восстановить профиль: "+error)
+                        .setPositiveButton("Открыть настройки",(d,w)->showSettings())
+                        .setNegativeButton("Отмена",null)
+                        .show();
+                });
+            }).start();
+            return;
+        }
+        if(manualMode) {
             new AlertDialog.Builder(this)
                 .setTitle("Выберите профиль в настройках")
                 .setMessage("В ручном режиме сначала выберите TCP или XHTTP через ⚙ → «Выбрать профиль подключения».")
