@@ -277,13 +277,17 @@ public class MainActivity extends Activity {
                 }).show());
         }
 
+        TextView save=text("✓   Сохранить",14,blue,true);
+        save.setGravity(Gravity.CENTER);
+        save.setPadding(dp(12),dp(12),dp(12),dp(12));
+        save.setBackground(shape(paleBlue,dp(14),0));
+        add(box,save,dp(12));
+
         AlertDialog dialog=new AlertDialog.Builder(this)
             .setTitle("Профиль и подключение")
             .setView(box)
-            .setNegativeButton("Отмена",null)
-            .setPositiveButton(hasProfile?"Сохранить изменения":"Добавить профиль",null)
             .create();
-        dialog.setOnShowListener(ignored->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+        save.setOnClickListener(v->{
             String value=input.getText().toString().trim();
             if(value.isEmpty()) {
                 input.setError("Вставьте ссылку подписки");
@@ -306,7 +310,7 @@ public class MainActivity extends Activity {
             refreshProfileState();
             dialog.dismiss();
             Toast.makeText(this,changed?"Профиль сохранён":"Ссылка не изменилась",Toast.LENGTH_SHORT).show();
-        }));
+        });
         dialog.show();
     }
 
