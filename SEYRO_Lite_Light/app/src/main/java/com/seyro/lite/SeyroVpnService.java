@@ -184,10 +184,7 @@ public class SeyroVpnService extends VpnService {
     }
 
     private void startHevTunnel() throws Exception {
-        if (!TProxyService.isLibraryLoaded()) {
-            Throwable loadError = TProxyService.getLibraryLoadError();
-            throw new IllegalStateException("Не удалось загрузить native-библиотеку HEV", loadError);
-        }
+        // Loading this class loads the self-contained HEV AAR native library.
         String yaml = "tunnel:\n"
             + "  name: seyro\n"
             + "  mtu: 1400\n"
