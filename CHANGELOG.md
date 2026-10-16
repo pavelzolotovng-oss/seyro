@@ -4,6 +4,10 @@
 
 ## 2026-10-16
 
+- **Фильтрация сетевых callback по VALIDATED:** `onCapabilitiesChanged()` проверяет `NET_CAPABILITY_VALIDATED`; повторные callback с тем же состоянием той же сети больше не запускают внеочередной probe. Проверка запускается при первом снимке/смене сети или изменении состояния в сторону validated; 3-секундный дебаунс сохранён как дополнительная защита.
+- **Сброс состояния:** сохранённый снимок возможностей очищается при снятии callback.
+- **Коммит кода:** `259117aa8f18eb1a24f9366824cb0b3dc77c95aa` — Filter repeated network capability callbacks using VALIDATED.
+
 - **Дебаунс сетевых probe:** события `onAvailable()` и `onCapabilitiesChanged()` проходят через `triggerProbeFromNetwork()`; повторные события в пределах 3 секунд пропускаются с диагностикой уровня V. При снятии сетевого callback таймер дебаунса сбрасывается.
 - **Коммит:** `e21b41177b624051a0c0b794e618c50ab27a3b10` — Debounce network-triggered probes.
 
