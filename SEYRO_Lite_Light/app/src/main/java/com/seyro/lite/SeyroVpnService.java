@@ -92,15 +92,19 @@ public class SeyroVpnService extends VpnService {
         }
         long now = System.currentTimeMillis();
         long sinceLastSec = lastProbeStartedAtMs == 0L ? -1L : Math.max(0L, (now - lastProbeStartedAtMs) / 1000L);
-        boolean didReset = stepIndex != 0 || successStreak != 0 || nextProbeIntervalSeconds != PROBE_INTERVALS_SECONDS[0];
         long currentIntervalSec = nextProbeIntervalSeconds;
+        // Keep the adaptive interval when returning to the UI soon after a probe.
+        // Reset the ladder only when the last probe is overdue by more than 2x its interval.
+        boolean didReset = sinceLastSec >= 0 && sinceLastSec > 2L * currentIntervalSec;
         Log.d("PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
             "s; interval=" + currentIntervalSec + "s; reset=" + didReset);
         DebugLog.d(this, "PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
             "s; interval=" + currentIntervalSec + "s; reset=" + didReset + "; reason=" + reason);
-        stepIndex = 0;
-        successStreak = 0;
-        nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[0];
+        if (didReset) {
+            stepIndex = 0;
+            successStreak = 0;
+            nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[0];
+        }
         scheduleNextProbe(0);
     }
 
