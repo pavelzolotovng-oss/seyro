@@ -82,7 +82,11 @@ public class SeyroVpnService extends VpnService {
     }
 
     private void triggerImmediateProbe(String reason) {
-        if (controller == null || !controller.getIsRunning()) return;
+        DebugLog.d(this, "PROBE", "Запрошен внеочередной probe: " + reason);
+        if (controller == null || !controller.getIsRunning()) {
+            DebugLog.d(this, "PROBE", "Probe пропущен: Xray ещё не запущен");
+            return;
+        }
         consecutiveProbeSuccesses = 0;
         nextProbeIntervalSeconds = 30;
         DebugLog.i(this, "PROBE", "Внеочередная проверка: " + reason);
@@ -95,9 +99,11 @@ public class SeyroVpnService extends VpnService {
             if (connectivityManager == null) return;
             networkCallback = new ConnectivityManager.NetworkCallback() {
                 @Override public void onAvailable(Network network) {
+                    DebugLog.i(SeyroVpnService.this, "NETWORK", "Сеть доступна: " + network);
                     triggerImmediateProbe("смена/доступность сети");
                 }
                 @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                    DebugLog.d(SeyroVpnService.this, "NETWORK", "Изменились возможности сети: " + network + "; internet=" + capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET));
                     if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
                         triggerImmediateProbe("изменились возможности сети");
                 }
@@ -272,6 +278,7 @@ public class SeyroVpnService extends VpnService {
         if (probeTask != null) probeTask.cancel(true);
         previousXrayCounters.clear(); previousHevStats = null;
         consecutiveProbeSuccesses = 0; nextProbeIntervalSeconds = 60;
+        DebugLog.d(this, "DIAGNOSTICS", "Сбор статистики запущен: период 30 секунд");
         diagnosticsTask = diagnosticsExecutor.scheduleWithFixedDelay(() -> {
             CoreController current = controller;
             if (current == null || !current.getIsRunning()) return;
@@ -312,6 +319,7 @@ public class SeyroVpnService extends VpnService {
             CoreController current=controller;
             if(current==null || !current.getIsRunning()) { scheduleNextProbe(60); return; }
             long started=System.currentTimeMillis();
+            DebugLog.d(this, "PROBE", "Начинается measureDelay; плановый интервал=" + nextProbeIntervalSeconds + " s");
             try {
                 long delay=current.measureDelay("https://www.google.com/generate_204"); long elapsed=System.currentTimeMillis()-started;
                 consecutiveProbeSuccesses++;
@@ -333,6 +341,7 @@ public class SeyroVpnService extends VpnService {
         if (diagnosticsTask != null) { diagnosticsTask.cancel(true); diagnosticsTask = null; }
         if (probeTask != null) { probeTask.cancel(true); probeTask = null; }
         DebugLog.i(this,"VPN","Остановка HEV/Xray и закрытие TUN");
+        DebugLog.d(this,"DIAGNOSTICS","Отмена задач статистики и probe");
         if (hevStarted) {
             try {
                 boolean stopped = TProxyService.TProxyStopService();
