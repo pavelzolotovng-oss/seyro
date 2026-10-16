@@ -8,7 +8,7 @@
 
 - Импорт и хранение ссылки подписки на устройстве.
 - Работа с профилями VLESS + REALITY.
-- Поддержка транспортов TCP и XHTTP; параметры профиля отображаются в приложении.
+- Поддержка транспортов TCP, XHTTP и gRPC (доступность зависит от параметров подписки/профиля).
 - Выбор профиля и подключение через системный VPN-интерфейс Android.
 - Маршрутизация VPN-трафика через HEV tun2socks к локальному SOCKS-входу Xray.
 - Диагностический журнал для поиска проблем.
@@ -23,15 +23,15 @@
 
 ## Структура репозитория
 
-- `SEYRO_Lite_Light/` — Android Studio/Gradle-проект.
+- `app/` — Android-приложение.
   - `app/src/main/java/` — Java-код приложения.
   - `app/src/main/res/` — ресурсы Android.
   - `app/build.gradle` — конфигурация Android-приложения и версия.
-  - `build.gradle`, `settings.gradle`, `gradle.properties` — конфигурация Gradle.
+- `build.gradle`, `settings.gradle`, `gradle.properties` — настройки Gradle в корне репозитория.
 - `.github/workflows/android-apk.yml` — автоматическая сборка и публикация APK.
 - `CHANGELOG.md` — журнал изменений.
 
-Android-проект намеренно хранится в отдельной папке: так его можно открыть в Android Studio целиком, не смешивая исходники, ресурсы и настройки сборки с файлами документации репозитория.
+Android-проект расположен непосредственно в корне репозитория: откройте корневую папку `seyro-lite/` в Android Studio.
 
 ## Сборка через GitHub Actions
 
@@ -52,7 +52,7 @@ Android-проект намеренно хранится в отдельной �
 
 ## Локальная сборка
 
-1. Откройте папку `SEYRO_Lite_Light/` в Android Studio.
+1. Откройте корневую папку репозитория `seyro-lite/` в Android Studio.
 2. Установите JDK 17 и Android SDK 35.
 3. Выполните Gradle Sync.
 4. Настройте переменные подписи, соответствующие конфигурации workflow, и запустите задачу `assembleDebug`.
@@ -73,4 +73,4 @@ Workflow скачивает необходимые AAR-библиотеки Xray
 
 ## Журнал изменений
 
-Подробная история изменений ведётся в [CHANGELOG.md](CHANGELOG.md) и в [истории коммитов](https://github.com/pavelzolotovng-oss/seyro-lite/commits/feature/profile-subscription-link).
+Подробная история изменений ведётся в [CHANGELOG.md](CHANGELOG.md) и в [истории коммитов](https://github.com/pavelzolotovng-oss/seyro-lite/commits/main).
