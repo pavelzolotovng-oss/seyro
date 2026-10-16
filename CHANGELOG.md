@@ -4,6 +4,11 @@
 
 ## 2026-10-16
 
+- **Уровень V в DebugLog:** добавлен `DebugLog.v(...)`; как и `d(...)`, он пишет в Logcat и постоянный журнал только в Debug-сборке, в Release полностью отключён.
+- **Шумные probe-сообщения:** «Probe пропущен: Xray ещё не запущен» понижен с D до V.
+- **Версия приложения:** `versionName` изменён на `0.8`; `versionCode` по-прежнему задаётся номером сборки.
+- **Коммиты:** `621484d0341cc2a143428de892956b3091ce9cff` (DebugLog V), `1855d90ebe85c12292df696b3405538600dc32e0` (уровень probe), `a672d435a1ee295469a5dcfde5006c73d647d56c` (версия 0.8).
+
 - **NetworkCallback:** добавлено разрешение `ACCESS_NETWORK_STATE` в AndroidManifest.xml для корректной регистрации `registerDefaultNetworkCallback()` и устранения `SecurityException`.
 - **Коммит манифеста:** `1422dc43d95cf6f9c643ea5ca83771efdcca5518` — Add ACCESS_NETWORK_STATE permission for network callback.
 
