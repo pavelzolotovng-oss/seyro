@@ -344,7 +344,9 @@ public class SeyroVpnService extends VpnService {
             long started = System.currentTimeMillis();
             lastProbeStartedAtMs = started;
             long plannedIntervalSec = nextProbeIntervalSeconds;
-            logProbe("Начинается measureDelay; плановый интервал=" + plannedIntervalSec +
+            Log.d("PROBE", "Начинается measureDelay; плановый интервал=" + plannedIntervalSec +
+                "s; streak=" + successStreak + "; step=" + stepIndex);
+            DebugLog.d(this, "PROBE", "Начинается measureDelay; плановый интервал=" + plannedIntervalSec +
                 "s; streak=" + successStreak + "; step=" + stepIndex);
             try {
                 long delay = current.measureDelay("https://www.google.com/generate_204");
@@ -355,7 +357,10 @@ public class SeyroVpnService extends VpnService {
                     successStreak = 0;
                 }
                 nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[stepIndex];
-                logProbe("Проверка успешна: delay=" + delay + "ms; elapsed=" + elapsed +
+                Log.d("PROBE", "Проверка успешна: delay=" + delay + "ms; elapsed=" + elapsed +
+                    "ms; streak=" + successStreak + "/3; step=" + stepIndex +
+                    "; следующий интервал=" + nextProbeIntervalSeconds + "s");
+                DebugLog.d(this, "PROBE", "Проверка успешна: delay=" + delay + "ms; elapsed=" + elapsed +
                     "ms; streak=" + successStreak + "/3; step=" + stepIndex +
                     "; следующий интервал=" + nextProbeIntervalSeconds + "s");
                 probeInProgress = false;
@@ -369,7 +374,10 @@ public class SeyroVpnService extends VpnService {
                 if (detail == null || detail.trim().isEmpty()) detail = e.toString();
                 detail = detail.replaceAll("(?i)vless://[^\\s]+", "vless://[redacted]");
                 if (detail.length() > 240) detail = detail.substring(0, 240);
-                logProbe("Проверка не удалась: error=" + e.getClass().getSimpleName() +
+                Log.d("PROBE", "Проверка не удалась: error=" + e.getClass().getSimpleName() +
+                    (detail.isEmpty() ? "" : " (" + detail + ")") +
+                    "; streak=0; step сброшен; следующий интервал=30s");
+                DebugLog.d(this, "PROBE", "Проверка не удалась: error=" + e.getClass().getSimpleName() +
                     (detail.isEmpty() ? "" : " (" + detail + ")") +
                     "; streak=0; step сброшен; следующий интервал=30s");
                 scheduleNextProbe(PROBE_INTERVALS_SECONDS[0]);
