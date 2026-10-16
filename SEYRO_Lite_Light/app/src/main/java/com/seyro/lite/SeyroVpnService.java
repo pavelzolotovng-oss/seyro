@@ -240,7 +240,7 @@ public class SeyroVpnService extends VpnService {
     }
 
     private void logXrayTrafficDelta(String traffic) {
-        Matcher m=Pattern.compile("(?i)(uplink|downlink|upload|download)\\\\s*[:=]\\\\s*(\\\\d+)").matcher(traffic);
+        Matcher m=Pattern.compile("(?i)(uplink|downlink|upload|download)\\s*[:=]\\s*(\\d+)").matcher(traffic);
         StringBuilder out=new StringBuilder();
         while(m.find()) {
             String key=m.group(1).toLowerCase(java.util.Locale.ROOT); long value;
@@ -266,7 +266,7 @@ public class SeyroVpnService extends VpnService {
             } catch(Exception e) {
                 consecutiveProbeSuccesses=0; nextProbeIntervalSeconds=30;
                 String detail=e.getMessage(); if(detail==null || detail.trim().isEmpty()) detail=e.toString();
-                detail=detail.replaceAll("(?i)vless://[^\\\\s]+","vless://[redacted]"); if(detail.length()>240) detail=detail.substring(0,240);
+                detail=detail.replaceAll("(?i)vless://[^\\s]+","vless://[redacted]"); if(detail.length()>240) detail=detail.substring(0,240);
                 DebugLog.w(this,"PROBE","Проверка не удалась: "+e.getClass().getSimpleName()+"; detail="+detail+"; elapsed="+(System.currentTimeMillis()-started)+" ms; повтор через 30 s");
                 scheduleNextProbe(30);
             }
