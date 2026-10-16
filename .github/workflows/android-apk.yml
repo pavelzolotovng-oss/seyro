@@ -12,13 +12,16 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Set build metadata
+        id: meta
+        run: echo "version_name=0.9.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
       - name: Checkout sources
         uses: actions/checkout@v4
       - name: Set up JDK 17
@@ -77,3 +80,14 @@ jobs:
           path: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish successful build as a prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-build-${{ github.run_number }}
+          name: SEYRO Lite ${{ steps.meta.outputs.version_name }}
+          body: |
+            Автоматическая тестовая сборка SEYRO Lite.
+            Версия: ${{ steps.meta.outputs.version_name }}
+            versionCode: ${{ github.run_number }}
+          prerelease: true
+          files: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
