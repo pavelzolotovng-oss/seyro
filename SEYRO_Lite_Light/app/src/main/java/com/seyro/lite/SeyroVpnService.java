@@ -92,7 +92,7 @@ public class SeyroVpnService extends VpnService {
     private void triggerImmediateProbe(String reason) {
         DebugLog.d(this, "PROBE", "Запрошен внеочередной probe: " + reason);
         if (controller == null || !controller.getIsRunning()) {
-            DebugLog.d(this, "PROBE", "Probe пропущен: Xray ещё не запущен");
+            DebugLog.v(this, "PROBE", "Probe пропущен: Xray ещё не запущен");
             return;
         }
         long now = System.currentTimeMillis();
