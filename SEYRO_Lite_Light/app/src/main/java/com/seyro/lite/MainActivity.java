@@ -1379,7 +1379,6 @@ public class MainActivity extends Activity {
                 if (code < 200 || code >= 300) throw new java.io.IOException("HTTP " + code);
                 long expected=conn.getContentLengthLong();
                 if(expected>300L*1024L*1024L) throw new java.io.IOException("APK превышает допустимый размер (300 МБ)");
-                progressDialog.setOnShowListener(null);
                 runOnUiThread(() -> {
                     progress.setIndeterminate(expected<=0);
                     percentText.setText(expected>0?"Загрузка: 0%":"Загрузка…");
@@ -1395,11 +1394,12 @@ public class MainActivity extends Activity {
                             if(p!=lastPercent) {
                                 lastPercent=p;
                                 final int shown=p;
+                                final long downloaded=total;
                                 runOnUiThread(() -> {
                                     progress.setIndeterminate(false);
                                     progress.setProgress(shown);
                                     percentText.setText("Загрузка: "+shown+"%");
-                                    statusText.setText(formatBytes(total)+" из "+formatBytes(expected));
+                                    statusText.setText(formatBytes(downloaded)+" из "+formatBytes(expected));
                                 });
                             }
                         }
