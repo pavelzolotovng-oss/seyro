@@ -40,6 +40,9 @@ public class SeyroVpnService extends VpnService {
     private static volatile SeyroVpnService activeInstance;
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
+    private Network lastCapabilitiesNetwork;
+    private boolean lastNetworkValidated;
+    private boolean hasCapabilitiesSnapshot;
     private volatile boolean probeInProgress = false;
     private static final long NETWORK_PROBE_DEBOUNCE_MS = 3000L;
     private long lastNetworkProbeAt = 0L;
@@ -136,9 +139,25 @@ public class SeyroVpnService extends VpnService {
                     triggerProbeFromNetwork("смена/доступность сети");
                 }
                 @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
-                    DebugLog.d(SeyroVpnService.this, "NETWORK", "Изменились возможности сети: " + network + "; internet=" + capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET));
-                    if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
-                        triggerProbeFromNetwork("изменились возможности сети");
+                    boolean validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                    boolean sameNetwork = network.equals(lastCapabilitiesNetwork);
+                    boolean validationChanged = !hasCapabilitiesSnapshot || !sameNetwork || validated != lastNetworkValidated;
+
+                    DebugLog.d(SeyroVpnService.this, "NETWORK",
+                            "Возможности сети: " + network
+                            + "; internet=" + capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                            + "; validated=" + validated
+                            + "; changed=" + validationChanged);
+
+                    // Android may emit this callback repeatedly with unchanged capabilities.
+                    // Probe only on the first snapshot, network switch, or validation-state change.
+                    lastCapabilitiesNetwork = network;
+                    lastNetworkValidated = validated;
+                    hasCapabilitiesSnapshot = true;
+
+                    if (validationChanged && validated) {
+                        triggerProbeFromNetwork("сеть получила VALIDATED");
+                    }
                 }
             };
             connectivityManager.registerDefaultNetworkCallback(networkCallback);
@@ -152,6 +171,9 @@ public class SeyroVpnService extends VpnService {
             try { connectivityManager.unregisterNetworkCallback(networkCallback); } catch (Exception ignored) {}
         }
         lastNetworkProbeAt = 0L;
+        lastCapabilitiesNetwork = null;
+        lastNetworkValidated = false;
+        hasCapabilitiesSnapshot = false;
         networkCallback = null;
         connectivityManager = null;
     }
