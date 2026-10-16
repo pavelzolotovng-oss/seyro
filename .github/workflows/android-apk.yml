@@ -8,6 +8,8 @@ on:
       - "build.gradle"
       - "settings.gradle"
       - "gradle.properties"
+      - "gradle/**"
+      - "gradlew"
       - ".github/workflows/android-apk.yml"
 
 concurrency:
@@ -47,7 +49,7 @@ jobs:
         run: |
           mkdir -p app/libs
           curl -fL --retry 3 https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.10/libv2ray.aar -o app/libs/libv2ray.aar
-          curl -fL --retry 3 https://github.com/heiher/hev-socks5-tunnel/releases/download/2.18.0/hev-socks5-tunnel.aar -o SEYRO_Lite_Light/app/libs/hev-socks5-tunnel.aar
+          curl -fL --retry 3 https://github.com/heiher/hev-socks5-tunnel/releases/download/2.18.0/hev-socks5-tunnel.aar -o app/libs/hev-socks5-tunnel.aar
       - name: Configure persistent APK signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -62,8 +64,8 @@ jobs:
             fi
           done
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/seyro-release.jks
-          test -s SEYRO_Lite_Light/app/seyro-release.jks
-          keytool -list -keystore SEYRO_Lite_Light/app/seyro-release.jks \
+          test -s app/seyro-release.jks
+          keytool -list -keystore app/seyro-release.jks \
             -storepass "$ANDROID_KEYSTORE_PASSWORD" \
             -alias "$ANDROID_KEY_ALIAS" \
             -keypass "$ANDROID_KEY_PASSWORD" >/dev/null
@@ -71,7 +73,7 @@ jobs:
       - name: Build signed APK
         working-directory: .
         env:
-          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/SEYRO_Lite_Light/app/seyro-release.jks
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/app/seyro-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -93,4 +95,4 @@ jobs:
             Версия: ${{ steps.meta.outputs.version_name }}
             versionCode: ${{ github.run_number }}
           prerelease: true
-          files: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
+          files: app/build/outputs/apk/debug/app-debug.apk
