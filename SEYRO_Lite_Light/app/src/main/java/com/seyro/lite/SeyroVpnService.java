@@ -41,6 +41,8 @@ public class SeyroVpnService extends VpnService {
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
     private volatile boolean probeInProgress = false;
+    private static final long NETWORK_PROBE_DEBOUNCE_MS = 3000L;
+    private long lastNetworkProbeAt = 0L;
     private static final int NOTIFICATION_ID = 1;
     public static final String ACTION_STATE_CHANGED = "com.seyro.lite.VPN_STATE_CHANGED";
     public static volatile String vpnState = "disconnected";
@@ -113,6 +115,17 @@ public class SeyroVpnService extends VpnService {
         scheduleNextProbe(0);
     }
 
+    private void triggerProbeFromNetwork(String reason) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastNetworkProbeAt < NETWORK_PROBE_DEBOUNCE_MS) {
+            DebugLog.v(this, "NETWORK", "Событие сети пропущено (дебаунс): " + reason);
+            return;
+        }
+        lastNetworkProbeAt = now;
+        DebugLog.i(this, "NETWORK", "Значимое событие сети: " + reason);
+        triggerImmediateProbe(reason);
+    }
+
     private void registerNetworkCallback() {
         try {
             connectivityManager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
@@ -120,12 +133,12 @@ public class SeyroVpnService extends VpnService {
             networkCallback = new ConnectivityManager.NetworkCallback() {
                 @Override public void onAvailable(Network network) {
                     DebugLog.i(SeyroVpnService.this, "NETWORK", "Сеть доступна: " + network);
-                    triggerImmediateProbe("смена/доступность сети");
+                    triggerProbeFromNetwork("смена/доступность сети");
                 }
                 @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
                     DebugLog.d(SeyroVpnService.this, "NETWORK", "Изменились возможности сети: " + network + "; internet=" + capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET));
                     if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
-                        triggerImmediateProbe("изменились возможности сети");
+                        triggerProbeFromNetwork("изменились возможности сети");
                 }
             };
             connectivityManager.registerDefaultNetworkCallback(networkCallback);
@@ -138,6 +151,7 @@ public class SeyroVpnService extends VpnService {
         if (connectivityManager != null && networkCallback != null) {
             try { connectivityManager.unregisterNetworkCallback(networkCallback); } catch (Exception ignored) {}
         }
+        lastNetworkProbeAt = 0L;
         networkCallback = null;
         connectivityManager = null;
     }
