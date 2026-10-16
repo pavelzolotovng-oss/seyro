@@ -6,6 +6,9 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.net.VpnService;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.ParcelFileDescriptor;
 import android.os.Handler;
 import android.os.Looper;
@@ -34,6 +37,10 @@ public class SeyroVpnService extends VpnService {
     public static final String EXTRA_CONFIG = "xray_config";
     private static final String TAG = "SEYRO-VPN";
     private static final String CHANNEL_ID = "seyro_vpn";
+    private static volatile SeyroVpnService activeInstance;
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
+    private volatile boolean probeInProgress = false;
     private static final int NOTIFICATION_ID = 1;
     public static final String ACTION_STATE_CHANGED = "com.seyro.lite.VPN_STATE_CHANGED";
     public static volatile String vpnState = "disconnected";
@@ -62,6 +69,52 @@ public class SeyroVpnService extends VpnService {
             return 0L;
         }
     };
+
+    @Override public void onCreate() {
+        super.onCreate();
+        activeInstance = this;
+        registerNetworkCallback();
+    }
+
+    public static void requestImmediateProbe(String reason) {
+        SeyroVpnService service = activeInstance;
+        if (service != null) service.triggerImmediateProbe(reason);
+    }
+
+    private void triggerImmediateProbe(String reason) {
+        if (controller == null || !controller.getIsRunning()) return;
+        consecutiveProbeSuccesses = 0;
+        nextProbeIntervalSeconds = 30;
+        DebugLog.i(this, "PROBE", "Внеочередная проверка: " + reason);
+        scheduleNextProbe(0);
+    }
+
+    private void registerNetworkCallback() {
+        try {
+            connectivityManager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            if (connectivityManager == null) return;
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(Network network) {
+                    triggerImmediateProbe("смена/доступность сети");
+                }
+                @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                    if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
+                        triggerImmediateProbe("изменились возможности сети");
+                }
+            };
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+        } catch (Exception e) {
+            DebugLog.w(this, "NETWORK", "Не удалось зарегистрировать наблюдение за сетью: " + e.getClass().getSimpleName());
+        }
+    }
+
+    private void unregisterNetworkCallback() {
+        if (connectivityManager != null && networkCallback != null) {
+            try { connectivityManager.unregisterNetworkCallback(networkCallback); } catch (Exception ignored) {}
+        }
+        networkCallback = null;
+        connectivityManager = null;
+    }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         DebugLog.i(this,"SERVICE","onStartCommand action="+(intent==null?"null":intent.getAction()));
@@ -254,6 +307,8 @@ public class SeyroVpnService extends VpnService {
     private void scheduleNextProbe(long delaySeconds) {
         if(probeTask!=null) probeTask.cancel(false);
         probeTask=probeExecutor.schedule(() -> {
+            if (probeInProgress) { scheduleNextProbe(5); return; }
+            probeInProgress = true;
             CoreController current=controller;
             if(current==null || !current.getIsRunning()) { scheduleNextProbe(60); return; }
             long started=System.currentTimeMillis();
@@ -262,8 +317,10 @@ public class SeyroVpnService extends VpnService {
                 consecutiveProbeSuccesses++;
                 if(consecutiveProbeSuccesses>=3) nextProbeIntervalSeconds=Math.min(300,nextProbeIntervalSeconds+60);
                 DebugLog.d(this,"PROBE","Проверка успешна: delay="+delay+" ms; elapsed="+elapsed+" ms; следующий интервал="+nextProbeIntervalSeconds+" s");
+                probeInProgress = false;
                 scheduleNextProbe(nextProbeIntervalSeconds);
             } catch(Exception e) {
+                probeInProgress = false;
                 consecutiveProbeSuccesses=0; nextProbeIntervalSeconds=30;
                 String detail=e.getMessage(); if(detail==null || detail.trim().isEmpty()) detail=e.toString();
                 detail=detail.replaceAll("(?i)vless://[^\\s]+","vless://[redacted]"); if(detail.length()>240) detail=detail.substring(0,240);
@@ -309,6 +366,8 @@ public class SeyroVpnService extends VpnService {
         vpnExecutor.shutdownNow();
         diagnosticsExecutor.shutdownNow();
         probeExecutor.shutdownNow();
+        unregisterNetworkCallback();
+        if (activeInstance == this) activeInstance = null;
         stopVpn();
         stopForeground(true);
         super.onDestroy();
