@@ -17,6 +17,10 @@ import java.util.concurrent.TimeUnit;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import hev.htproxy.TProxyService;
 import android.util.Log;
 import libv2ray.CoreCallbackHandler;
@@ -40,6 +44,10 @@ public class SeyroVpnService extends VpnService {
     private final ScheduledExecutorService probeExecutor = Executors.newSingleThreadScheduledExecutor();
     private ScheduledFuture<?> diagnosticsTask;
     private ScheduledFuture<?> probeTask;
+    private int consecutiveProbeSuccesses = 0;
+    private long nextProbeIntervalSeconds = 60;
+    private final Map<String, Long> previousXrayCounters = new HashMap<>();
+    private long[] previousHevStats;
     private ParcelFileDescriptor tun;
     private CoreController controller;
     private boolean hevStarted = false;
@@ -49,8 +57,8 @@ public class SeyroVpnService extends VpnService {
         @Override public long startup() { DebugLog.i(SeyroVpnService.this,"XRAY","Core callback startup"); return 0L; }
         @Override public long shutdown() { DebugLog.i(SeyroVpnService.this,"XRAY","Core callback shutdown"); return 0L; }
         @Override public long onEmitStatus(long level, String message) {
-            Log.i(TAG, "Xray[" + level + "]: " + message);
-            DebugLog.i(SeyroVpnService.this,"XRAY","level="+level+" "+message);
+            if (BuildConfig.DEBUG) Log.d(TAG, "Xray[" + level + "]: " + message);
+            DebugLog.d(SeyroVpnService.this,"XRAY","level="+level+" "+message);
             return 0L;
         }
     };
@@ -209,41 +217,61 @@ public class SeyroVpnService extends VpnService {
     private void startTrafficDiagnostics() {
         if (diagnosticsTask != null) diagnosticsTask.cancel(true);
         if (probeTask != null) probeTask.cancel(true);
+        previousXrayCounters.clear(); previousHevStats = null;
+        consecutiveProbeSuccesses = 0; nextProbeIntervalSeconds = 60;
         diagnosticsTask = diagnosticsExecutor.scheduleWithFixedDelay(() -> {
             CoreController current = controller;
             if (current == null || !current.getIsRunning()) return;
             try {
                 String traffic = current.queryAllOutboundTrafficStats();
-                DebugLog.i(this, "TRAFFIC", traffic == null || traffic.isEmpty() ? "outbound counters empty" : "outbound counters: " + traffic);
+                if (traffic != null && !traffic.trim().isEmpty()) logXrayTrafficDelta(traffic);
                 if (hevStarted && TProxyService.TProxyIsRunning()) {
                     long[] stats = TProxyService.TProxyGetStats();
                     if (stats != null && stats.length >= 4) {
-                        DebugLog.i(this, "HEV_STATS", "txPackets=" + stats[0] + "; txBytes=" + stats[1] + "; rxPackets=" + stats[2] + "; rxBytes=" + stats[3]);
+                        long[] delta = new long[4]; boolean hasDelta = previousHevStats != null;
+                        for (int i=0;i<4;i++) { delta[i] = previousHevStats == null || stats[i] < previousHevStats[i] ? 0 : stats[i]-previousHevStats[i]; if(delta[i]!=0) hasDelta=true; }
+                        previousHevStats = new long[]{stats[0],stats[1],stats[2],stats[3]};
+                        if(hasDelta) DebugLog.d(this,"HEV_STATS","за 30с: txPackets=+"+delta[0]+"; txBytes=+"+delta[1]+"; rxPackets=+"+delta[2]+"; rxBytes=+"+delta[3]);
                     }
                 }
-            } catch (Exception e) {
-                DebugLog.w(this, "TRAFFIC", "counter read failed: " + e.getClass().getSimpleName());
-            }
-        }, 3, 10, TimeUnit.SECONDS);
-        // Active outbound probe uses Xray's own dialer and does not depend on Android TUN packet delivery.
-        probeTask = probeExecutor.scheduleWithFixedDelay(() -> {
-            CoreController current = controller;
-            if (current == null || !current.getIsRunning()) return;
-            long startedAt = System.currentTimeMillis();
-            try {
-                long delay = current.measureDelay("https://www.google.com/generate_204");
-                long elapsed = System.currentTimeMillis() - startedAt;
-                DebugLog.i(this, "PROBE", "Xray outbound HTTP probe result=" + delay + " ms; elapsed=" + elapsed + " ms; target=generate_204");
-            } catch (Exception e) {
-                String detail = e.getMessage();
-                if (detail == null || detail.trim().isEmpty()) detail = e.toString();
-                detail = detail.replaceAll("(?i)vless://[^\\s]+", "vless://[redacted]");
-                if (detail.length() > 240) detail = detail.substring(0, 240);
-                DebugLog.w(this, "PROBE", "Xray outbound HTTP probe failed: " + e.getClass().getSimpleName() + "; detail=" + detail + "; elapsed=" + (System.currentTimeMillis() - startedAt) + " ms");
-            }
-        }, 5, 30, TimeUnit.SECONDS);
+            } catch(Exception e) { DebugLog.w(this,"TRAFFIC","counter read failed: "+e.getClass().getSimpleName()); }
+        },30,30,TimeUnit.SECONDS);
+        scheduleNextProbe(5);
     }
 
+    private void logXrayTrafficDelta(String traffic) {
+        Matcher m=Pattern.compile("(?i)(uplink|downlink|upload|download)\\\\s*[:=]\\\\s*(\\\\d+)").matcher(traffic);
+        StringBuilder out=new StringBuilder();
+        while(m.find()) {
+            String key=m.group(1).toLowerCase(java.util.Locale.ROOT); long value;
+            try { value=Long.parseLong(m.group(2)); } catch(NumberFormatException ex) { continue; }
+            Long previous=previousXrayCounters.put(key,value);
+            if(previous!=null) { long delta=value>=previous?value-previous:value; if(delta>0) { if(out.length()>0) out.append("; "); out.append(key).append("=+").append(delta); } }
+        }
+        if(out.length()>0) DebugLog.d(this,"TRAFFIC","за 30с: "+out);
+    }
+
+    private void scheduleNextProbe(long delaySeconds) {
+        if(probeTask!=null) probeTask.cancel(false);
+        probeTask=probeExecutor.schedule(() -> {
+            CoreController current=controller;
+            if(current==null || !current.getIsRunning()) { scheduleNextProbe(60); return; }
+            long started=System.currentTimeMillis();
+            try {
+                long delay=current.measureDelay("https://www.google.com/generate_204"); long elapsed=System.currentTimeMillis()-started;
+                consecutiveProbeSuccesses++;
+                if(consecutiveProbeSuccesses>=3) nextProbeIntervalSeconds=Math.min(300,nextProbeIntervalSeconds+60);
+                DebugLog.d(this,"PROBE","Проверка успешна: delay="+delay+" ms; elapsed="+elapsed+" ms; следующий интервал="+nextProbeIntervalSeconds+" s");
+                scheduleNextProbe(nextProbeIntervalSeconds);
+            } catch(Exception e) {
+                consecutiveProbeSuccesses=0; nextProbeIntervalSeconds=30;
+                String detail=e.getMessage(); if(detail==null || detail.trim().isEmpty()) detail=e.toString();
+                detail=detail.replaceAll("(?i)vless://[^\\\\s]+","vless://[redacted]"); if(detail.length()>240) detail=detail.substring(0,240);
+                DebugLog.w(this,"PROBE","Проверка не удалась: "+e.getClass().getSimpleName()+"; detail="+detail+"; elapsed="+(System.currentTimeMillis()-started)+" ms; повтор через 30 s");
+                scheduleNextProbe(30);
+            }
+        },delaySeconds,TimeUnit.SECONDS);
+    }
     private void stopVpn() {
         if (diagnosticsTask != null) { diagnosticsTask.cancel(true); diagnosticsTask = null; }
         if (probeTask != null) { probeTask.cancel(true); probeTask = null; }
