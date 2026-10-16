@@ -313,8 +313,8 @@ public class MainActivity extends Activity {
                 padding(confirmBox,dp(20),dp(20),dp(20),dp(16));
                 confirmBox.setBackground(shape(white,dp(24),0));
 
-                TextView title=text("Удалить профиль?",19,ink,true);
-                add(confirmBox,title,dp(2));
+                TextView confirmTitle=text("Удалить профиль?",19,ink,true);
+                add(confirmBox,confirmTitle,dp(2));
 
                 TextView message=text(
                     "Сохранённая ссылка будет удалена с этого устройства. Для подключения потребуется добавить её снова.",
