@@ -17,7 +17,9 @@ public final class DebugLog {
 
     private DebugLog() {}
 
-    public static void i(Context context, String area, String message) { write(context, "I", area, message, null); }
+    public static void d(Context context, String area, String message) { if (BuildConfig.DEBUG) write(context, "D", area, message, null); }
+    public static void i(Context context, String area, String message) { if (!BuildConfig.DEBUG && !isLifecycleEvent(area, message)) return; write(context, "I", area, message, null); }
+    private static boolean isLifecycleEvent(String area, String message) { if ("APP".equals(area) || "SERVICE".equals(area) || "STATE".equals(area)) return true; if (!"VPN".equals(area)) return false; String m=message==null?"":message.toLowerCase(Locale.ROOT); return m.contains("отключение завершено") || m.contains("запущен") || m.contains("ошибка") || m.contains("начинается запуск"); }
     public static void w(Context context, String area, String message) { write(context, "W", area, message, null); }
     public static void e(Context context, String area, String message) { write(context, "E", area, message, null); }
 
@@ -30,6 +32,7 @@ public final class DebugLog {
                 + " " + level + "/" + area + ": " + safe;
         if ("E".equals(level)) Log.e(TAG, line, error);
         else if ("W".equals(level)) Log.w(TAG, line);
+        else if ("D".equals(level)) Log.d(TAG, line);
         else Log.i(TAG, line);
         synchronized (LOCK) {
             try {
