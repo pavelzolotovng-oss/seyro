@@ -12,7 +12,7 @@ android {
         minSdk 29
         targetSdk 35
         versionCode buildNumber
-        versionName "0.9"
+        versionName "0.9.${buildNumber}"
     }
     signingConfigs {
         stable {
@@ -29,6 +29,7 @@ android {
     }
 }
 dependencies {
+    implementation 'androidx.core:core:1.15.0'
     implementation files('libs/libv2ray.aar')
     implementation files('libs/hev-socks5-tunnel.aar')
 }
