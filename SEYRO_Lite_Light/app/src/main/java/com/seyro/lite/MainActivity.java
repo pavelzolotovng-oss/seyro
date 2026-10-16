@@ -1277,7 +1277,7 @@ public class MainActivity extends Activity {
                     byte[] buf = new byte[8192]; int n; long total = 0;
                     while ((n = in.read(buf)) != -1) {
                         total += n;
-                        if (total > 150L * 1024L * 1024L) throw new java.io.IOException("APK превышает допустимый размер");
+                        if (total > 300L * 1024L * 1024L) throw new java.io.IOException("APK превышает допустимый размер (300 МБ)");
                         fileOut.write(buf, 0, n);
                     }
                 }
