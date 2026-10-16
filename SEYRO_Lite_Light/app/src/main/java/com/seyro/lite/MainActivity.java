@@ -828,7 +828,7 @@ public class MainActivity extends Activity {
         TextView title=text("Журнал отладки",19,ink,true);
         title.setGravity(Gravity.CENTER);
         add(box,title,dp(10));
-        TextView subtitle=text("Диагностика подключения SEYRO",12,muted,false);
+        TextView subtitle=text(BuildConfig.DEBUG?"Подробные этапы подключения · режим отладки":"Диагностика подключения SEYRO",12,muted,false);
         subtitle.setGravity(Gravity.CENTER);
         add(box,subtitle,dp(8));
         TextView view=text(log,11,ink,false);
@@ -848,28 +848,40 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams buttonsP=new LinearLayout.LayoutParams(-1,-2);
         buttonsP.topMargin=dp(12);
         box.addView(buttons,buttonsP);
+        TextView refresh=text("Обновить",12,blue,true);
+        refresh.setGravity(Gravity.CENTER);
+        refresh.setBackground(shape(paleBlue,dp(13),0));
+        padding(refresh,dp(6),dp(12),dp(6),dp(12));
+        buttons.addView(refresh,new LinearLayout.LayoutParams(0,-2,1));
         TextView share=text("Поделиться",12,blue,true);
         share.setGravity(Gravity.CENTER);
         share.setBackground(shape(paleBlue,dp(13),0));
         padding(share,dp(8),dp(12),dp(8),dp(12));
-        buttons.addView(share,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout.LayoutParams shareP=new LinearLayout.LayoutParams(0,-2,1);
+        shareP.leftMargin=dp(5);
+        buttons.addView(share,shareP);
         TextView clear=text("Очистить",12,blue,true);
         clear.setGravity(Gravity.CENTER);
         clear.setBackground(shape(paleBlue,dp(13),0));
         padding(clear,dp(8),dp(12),dp(8),dp(12));
         LinearLayout.LayoutParams clearP=new LinearLayout.LayoutParams(0,-2,1);
-        clearP.leftMargin=dp(6);
+        clearP.leftMargin=dp(5);
         buttons.addView(clear,clearP);
         TextView close=text("Закрыть",12,white,true);
         close.setGravity(Gravity.CENTER);
         close.setBackground(shape(blue,dp(13),0));
         padding(close,dp(8),dp(12),dp(8),dp(12));
         LinearLayout.LayoutParams closeP=new LinearLayout.LayoutParams(0,-2,1);
-        closeP.leftMargin=dp(6);
+        closeP.leftMargin=dp(5);
         buttons.addView(close,closeP);
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
         // Match the standard main-menu modal dim amount.
         dialog.setOnShowListener(ignored->styleCustomDialog(dialog,0.58f));
+        refresh.setOnClickListener(v->{
+            String latest=DebugLog.read(this);
+            view.setText(latest.isEmpty()?"Журнал пока пуст. Повторите подключение, затем откройте этот экран.":latest);
+            scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));
+        });
         share.setOnClickListener(v->{
             Intent intent=new Intent(Intent.ACTION_SEND).setType("text/plain")
                 .putExtra(Intent.EXTRA_SUBJECT,"SEYRO Lite — журнал отладки")
