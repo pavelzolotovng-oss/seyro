@@ -1003,7 +1003,8 @@ public class MainActivity extends Activity {
                 conn.setReadTimeout(10000);
                 conn.setInstanceFollowRedirects(true);
                 conn.setRequestProperty("User-Agent","SEYRO-Lite/"+APP_VERSION);
-                int code=conn.getResponseCode();
+                DebugLog.d(this, "SUBSCRIPTION", "Ожидание HTTP-ответа подписки");
+            int code=conn.getResponseCode();
                 if(code>=200 && code<300) {
                     readSubscriptionMetadata(conn);
                     runOnUiThread(() -> {
@@ -1102,6 +1103,7 @@ public class MainActivity extends Activity {
             .setPositiveButton("Понятно",null).show();
     }
     private void onConnect() {
+        DebugLog.d(this, "UI", "Нажата кнопка подключения; state=" + SeyroVpnService.vpnState);
         DebugLog.i(this,"UI","Нажата кнопка подключения; state="+SeyroVpnService.vpnState);
         if("connected".equals(SeyroVpnService.vpnState)) {
             connect.setEnabled(false); connect.setText("Отключаемся…");
@@ -1210,6 +1212,7 @@ public class MainActivity extends Activity {
     }
 
     private java.util.ArrayList<ProfileOption> fetchAndBuildConfigs(String link) throws Exception {
+        DebugLog.d(this, "SUBSCRIPTION", "Этап 1/5: подготовка URL подписки; секретная часть не записывается");
         DebugLog.i(this,"SUBSCRIPTION","Начата загрузка профиля; ссылка скрыта");
         URL url=new URL(link);
         if(!"https".equalsIgnoreCase(url.getProtocol()) && !"http".equalsIgnoreCase(url.getProtocol()))
@@ -1231,7 +1234,9 @@ public class MainActivity extends Activity {
                 byte[] buf=new byte[4096]; int n; while((n=in.read(buf))!=-1) { out.write(buf,0,n); if(out.size()>2_000_000) throw new IllegalStateException("Ответ подписки слишком большой"); }
             }
             String body=new String(out.toByteArray(),StandardCharsets.UTF_8).trim();
+            DebugLog.d(this, "SUBSCRIPTION", "Этап 2/5: тело ответа прочитано; размер=" + out.size() + " байт");
             DebugLog.i(this,"SUBSCRIPTION","Ответ получен; байт="+out.size()+"; начало формата="+(body.startsWith("[")?"JSON-массив":body.startsWith("{")?"JSON-объект":body.startsWith("vless://")?"VLESS":"другой/Base64"));
+            DebugLog.d(this, "SUBSCRIPTION", "Этап 3/5: попытка разбора JSON-профилей");
             // Some providers return a JSON array of complete Xray profiles instead of vless:// links.
             if(body.startsWith("[") || body.startsWith("{")) {
                 try {
@@ -1252,6 +1257,7 @@ public class MainActivity extends Activity {
             }
             // Subscription providers may return plain links, standard Base64, or URL-safe Base64.
             // Try decoding more than once, because some gateways wrap an already encoded subscription.
+            DebugLog.d(this, "SUBSCRIPTION", "Этап 4/5: поиск VLESS-ссылок / декодирование Base64");
             for(int attempt=0;attempt<3 && !body.contains("vless://");attempt++) {
                 String compact=body.replaceAll("\\s+","");
                 String decoded=null;
@@ -1283,6 +1289,7 @@ public class MainActivity extends Activity {
                     if(!parsed.isEmpty()) return parsed;
                 } catch(org.json.JSONException ignored) { /* Continue with link parsing. */ }
             }
+            DebugLog.d(this, "SUBSCRIPTION", "Этап 5/5: разбор строк подписки");
             for(String line:body.split("\\r?\n")) {
                 String candidate=line.trim();
                 int linkStart=candidate.indexOf("vless://");
@@ -1391,7 +1398,8 @@ public class MainActivity extends Activity {
         JSONObject inbound=new JSONObject().put("tag","socks-in").put("listen","127.0.0.1").put("port",10808)
             .put("protocol","socks").put("settings",new JSONObject().put("auth","noauth").put("udp",true).put("ip","127.0.0.1"));
         // Xray's native TUN inbound consumes the VpnService file descriptor passed to StartLoop.
-        return new JSONObject().put("log",new JSONObject().put("loglevel","warning"))
+        DebugLog.d(this, "XRAY_CONFIG", "Сформирован Xray-конфиг для транспорта " + network + "; содержимое конфига не выводится");
+        return new JSONObject().put("log",new JSONObject().put("loglevel","debug"))
             .put("stats",new JSONObject())
             .put("policy",new JSONObject()
                 .put("levels",new JSONObject().put("0",new JSONObject().put("statsUserUplink",true).put("statsUserDownlink",true)))
@@ -1400,6 +1408,7 @@ public class MainActivity extends Activity {
     }
 
     private void requestVpnPermissionAndStart() {
+        DebugLog.d(this, "VPN", "Проверка разрешения Android VPN; выбранный транспорт=" + activeTransport);
         DebugLog.i(this,"VPN","Проверка разрешения Android VPN");
         Intent permission=VpnService.prepare(this);
         if(permission!=null) { DebugLog.i(this,"VPN","Запрошено разрешение Android VPN"); startActivityForResult(permission,VPN_PERMISSION_REQUEST); return; }
