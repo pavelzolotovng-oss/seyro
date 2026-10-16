@@ -1157,13 +1157,14 @@ public class MainActivity extends Activity {
         String title=decodeMetadataHeader(conn.getHeaderField("profile-title"));
         String announce=decodeMetadataHeader(conn.getHeaderField("announce"));
         if(!title.isEmpty()) subscriptionTitle=title;
-        if(!announce.isEmpty()) subscriptionAnnounce=announce;
+        // announce is authoritative too: clear a previous VIP message when the server
+        // stops sending it (for example after VIP is disabled).
+        subscriptionAnnounce=announce;
         String userInfo=conn.getHeaderField("subscription-userinfo");
-        if(userInfo!=null) {
-            // Treat each successful metadata response as authoritative. Otherwise an
-            // old expiry can survive in cache when a VIP/unlimited response omits expire.
+        // Every successful response replaces the previous expiry; never keep a stale date.
+        subscriptionExpire=-1;
+        if(userInfo!=null && !userInfo.trim().isEmpty()) {
             boolean hasExpire=false;
-            subscriptionExpire=-1;
             for(String part:userInfo.split(";")) {
                 String[] kv=part.trim().split("=",2);
                 if(kv.length!=2) continue;
@@ -1178,9 +1179,12 @@ public class MainActivity extends Activity {
                     }
                 } catch(NumberFormatException ignored) {}
             }
-            // In subscription-userinfo, expire=0 means no expiry (unlimited term).
-            // If the header is valid but does not contain expire, don't reuse a stale date.
+            // A present userinfo header without expire means no expiry limit.
             if(!hasExpire) subscriptionExpire=0;
+        } else if(announce.toLowerCase(java.util.Locale.ROOT).contains("vip-доступ активен")
+                || announce.toLowerCase(java.util.Locale.ROOT).contains("vip access active")) {
+            // This server represents unlimited VIP by an announce header without userinfo.
+            subscriptionExpire=0;
         }
         prefs.edit()
             .putString("cached_subscription_title",subscriptionTitle)
