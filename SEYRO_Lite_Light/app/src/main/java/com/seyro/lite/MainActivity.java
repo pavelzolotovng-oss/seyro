@@ -1284,18 +1284,88 @@ public class MainActivity extends Activity {
 
     private void showAppUpdateDialog(String version, String notes, String apkUrl) {
         if (isFinishing()) return;
-        String message = "Доступна новая сборка: " + version
-            + "\nУстановленная версия: " + APP_VERSION
-            + "\n\nAPK подписан тем же ключом, поэтому установится поверх текущего приложения."
-            + (notes.isEmpty() ? "" : "\n\n" + notes);
-        new AlertDialog.Builder(this).setTitle("Доступно обновление SEYRO Lite").setMessage(message)
-            .setPositiveButton("Скачать и установить", (d, w) -> downloadUpdate(apkUrl))
-            .setNeutralButton("Проверить сейчас", (d, w) -> checkForAppUpdate(true))
-            .setNegativeButton("Позже", null).show();
+        LinearLayout box=column();
+        padding(box,dp(22),dp(20),dp(22),dp(14));
+        box.setBackground(shape(white,dp(24),line));
+
+        TextView brand=text("SEYRO",22,ink,true);
+        brand.setGravity(Gravity.CENTER);
+        brand.setLetterSpacing(.08f);
+        box.addView(brand);
+        TextView subtitle=text("LITE VPN  ·  SEYRO.RU",10,blue,true);
+        subtitle.setGravity(Gravity.CENTER);
+        add(box,subtitle,dp(3));
+
+        TextView heading=text("Доступно обновление",19,ink,true);
+        heading.setGravity(Gravity.CENTER);
+        add(box,heading,dp(18));
+        TextView versionText=text("Новая версия: "+version+"\nУстановлена: "+APP_VERSION,14,muted,false);
+        versionText.setGravity(Gravity.CENTER);
+        add(box,versionText,dp(9));
+        TextView details=text("Обновление установится поверх приложения и сохранит ваши настройки.",13,muted,false);
+        details.setGravity(Gravity.CENTER);
+        add(box,details,dp(12));
+        if(!notes.isEmpty()) {
+            TextView releaseNotes=text(notes,12,muted,false);
+            releaseNotes.setMaxLines(4);
+            releaseNotes.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            add(box,releaseNotes,dp(8));
+        }
+        LinearLayout actions=new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams actionsP=new LinearLayout.LayoutParams(-1,-2);
+        actionsP.topMargin=dp(18);
+        box.addView(actions,actionsP);
+        TextView later=text("Позже",13,muted,true);
+        later.setGravity(Gravity.CENTER);
+        later.setBackground(shape(0xfff2f6fc,dp(14),0));
+        padding(later,dp(10),dp(12),dp(10),dp(12));
+        actions.addView(later,new LinearLayout.LayoutParams(0,-2,1));
+        TextView download=text("Скачать и установить",13,white,true);
+        download.setGravity(Gravity.CENTER);
+        download.setBackground(shape(blue,dp(14),0));
+        padding(download,dp(12),dp(12),dp(12),dp(12));
+        LinearLayout.LayoutParams downloadP=new LinearLayout.LayoutParams(0,-2,1);
+        downloadP.leftMargin=dp(8);
+        actions.addView(download,downloadP);
+
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
+        dialog.setOnShowListener(v->styleCustomDialog(dialog,0.92f));
+        dialog.show();
+        later.setOnClickListener(v->dialog.dismiss());
+        download.setOnClickListener(v->{dialog.dismiss();downloadUpdate(apkUrl);});
     }
 
     private void downloadUpdate(String apkUrl) {
-        Toast.makeText(this, "Скачиваем обновление…", Toast.LENGTH_SHORT).show();
+        if(isFinishing()) return;
+        LinearLayout box=column();
+        padding(box,dp(22),dp(22),dp(22),dp(20));
+        box.setBackground(shape(white,dp(24),line));
+        TextView brand=text("SEYRO",20,ink,true);
+        brand.setGravity(Gravity.CENTER);
+        brand.setLetterSpacing(.08f);
+        box.addView(brand);
+        TextView title=text("Загрузка обновления",16,ink,true);
+        title.setGravity(Gravity.CENTER);
+        add(box,title,dp(12));
+        TextView percentText=text("Подготовка загрузки…",13,muted,false);
+        percentText.setGravity(Gravity.CENTER);
+        add(box,percentText,dp(10));
+        ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(blue));
+        progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xffe2eaf6));
+        LinearLayout.LayoutParams progressP=new LinearLayout.LayoutParams(-1,dp(8));
+        progressP.topMargin=dp(14);
+        box.addView(progress,progressP);
+        TextView statusText=text("Не закрывайте приложение до завершения.",11,muted,false);
+        statusText.setGravity(Gravity.CENTER);
+        add(box,statusText,dp(10));
+        AlertDialog progressDialog=new AlertDialog.Builder(this).setView(box).create();
+        progressDialog.setCancelable(false);
+        progressDialog.setOnShowListener(v->styleCustomDialog(progressDialog,0.86f));
+        progressDialog.show();
+
         new Thread(() -> {
             java.net.HttpURLConnection conn = null;
             try {
@@ -1307,22 +1377,51 @@ public class MainActivity extends Activity {
                 conn.setRequestProperty("User-Agent", "SEYRO-Lite/" + APP_VERSION);
                 int code = conn.getResponseCode();
                 if (code < 200 || code >= 300) throw new java.io.IOException("HTTP " + code);
+                long expected=conn.getContentLengthLong();
+                if(expected>300L*1024L*1024L) throw new java.io.IOException("APK превышает допустимый размер (300 МБ)");
+                progressDialog.setOnShowListener(null);
+                runOnUiThread(() -> {
+                    progress.setIndeterminate(expected<=0);
+                    percentText.setText(expected>0?"Загрузка: 0%":"Загрузка…");
+                });
                 try (InputStream in = conn.getInputStream(); java.io.FileOutputStream fileOut = new java.io.FileOutputStream(apk)) {
-                    byte[] buf = new byte[8192]; int n; long total = 0;
+                    byte[] buf = new byte[8192]; int n; long total = 0; int lastPercent=-1;
                     while ((n = in.read(buf)) != -1) {
                         total += n;
                         if (total > 300L * 1024L * 1024L) throw new java.io.IOException("APK превышает допустимый размер (300 МБ)");
                         fileOut.write(buf, 0, n);
+                        if(expected>0) {
+                            int p=(int)Math.min(100,total*100L/expected);
+                            if(p!=lastPercent) {
+                                lastPercent=p;
+                                final int shown=p;
+                                runOnUiThread(() -> {
+                                    progress.setIndeterminate(false);
+                                    progress.setProgress(shown);
+                                    percentText.setText("Загрузка: "+shown+"%");
+                                    statusText.setText(formatBytes(total)+" из "+formatBytes(expected));
+                                });
+                            }
+                        }
                     }
+                    fileOut.getFD().sync();
                 }
                 if (!apk.isFile() || apk.length() == 0) throw new java.io.IOException("Скачанный APK пуст");
-                runOnUiThread(() -> { Toast.makeText(this, "Обновление скачано", Toast.LENGTH_SHORT).show(); installDownloadedUpdate(apk); });
+                runOnUiThread(() -> {
+                    progress.setProgress(100);
+                    percentText.setText("Загрузка завершена · 100%");
+                    progressDialog.dismiss();
+                    installDownloadedUpdate(apk);
+                });
             } catch (Exception e) {
                 DebugLog.w(this, "UPDATE", "Не удалось скачать обновление: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-                runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("Ошибка обновления")
-                    .setMessage("Не удалось скачать APK. Проверьте интернет и попробуйте позже.")
-                    .setPositiveButton("Проверить снова", (d, w) -> checkForAppUpdate(true))
-                    .setNegativeButton("Закрыть", null).show());
+                runOnUiThread(() -> {
+                    if(progressDialog.isShowing()) progressDialog.dismiss();
+                    new AlertDialog.Builder(this).setTitle("Не удалось обновить SEYRO")
+                        .setMessage("Не удалось скачать установочный файл. Проверьте соединение и попробуйте ещё раз.")
+                        .setPositiveButton("Повторить", (d, w) -> downloadUpdate(apkUrl))
+                        .setNegativeButton("Закрыть", null).show();
+                });
             } finally { if (conn != null) conn.disconnect(); }
         }, "seyro-update-download").start();
     }
