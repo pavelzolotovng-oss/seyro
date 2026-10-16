@@ -997,8 +997,11 @@ public class MainActivity extends Activity {
                 java.text.SimpleDateFormat fmt=new java.text.SimpleDateFormat("dd.MM.yyyy 'в' HH:mm",java.util.Locale.getDefault());
                 subscriptionExpiryText.setText("Подписка активна до "+fmt.format(new java.util.Date(subscriptionExpire*1000L)));
                 subscriptionExpiryText.setTextColor(green);
+            } else if(subscriptionExpire==0) {
+                subscriptionExpiryText.setText("VIP-доступ · срок не ограничен");
+                subscriptionExpiryText.setTextColor(green);
             } else {
-                subscriptionExpiryText.setText("Срок подписки появится после проверки");
+                subscriptionExpiryText.setText("Проверяем срок подписки…");
                 subscriptionExpiryText.setTextColor(muted);
             }
         }
@@ -1156,18 +1159,28 @@ public class MainActivity extends Activity {
         if(!title.isEmpty()) subscriptionTitle=title;
         if(!announce.isEmpty()) subscriptionAnnounce=announce;
         String userInfo=conn.getHeaderField("subscription-userinfo");
-        if(userInfo!=null) for(String part:userInfo.split(";")) {
-            String[] kv=part.trim().split("=",2);
-            if(kv.length!=2) continue;
-            try {
-                long n=Long.parseLong(kv[1].trim());
-                switch(kv[0].trim().toLowerCase(java.util.Locale.ROOT)) {
-                    case "upload": trafficUpload=n; break;
-                    case "download": trafficDownload=n; break;
-                    case "total": trafficTotal=n; break;
-                    case "expire": subscriptionExpire=n; break;
-                }
-            } catch(NumberFormatException ignored) {}
+        if(userInfo!=null) {
+            // Treat each successful metadata response as authoritative. Otherwise an
+            // old expiry can survive in cache when a VIP/unlimited response omits expire.
+            boolean hasExpire=false;
+            subscriptionExpire=-1;
+            for(String part:userInfo.split(";")) {
+                String[] kv=part.trim().split("=",2);
+                if(kv.length!=2) continue;
+                String key=kv[0].trim().toLowerCase(java.util.Locale.ROOT);
+                try {
+                    long n=Long.parseLong(kv[1].trim());
+                    switch(key) {
+                        case "upload": trafficUpload=n; break;
+                        case "download": trafficDownload=n; break;
+                        case "total": trafficTotal=n; break;
+                        case "expire": subscriptionExpire=Math.max(0,n); hasExpire=true; break;
+                    }
+                } catch(NumberFormatException ignored) {}
+            }
+            // In subscription-userinfo, expire=0 means no expiry (unlimited term).
+            // If the header is valid but does not contain expire, don't reuse a stale date.
+            if(!hasExpire) subscriptionExpire=0;
         }
         prefs.edit()
             .putString("cached_subscription_title",subscriptionTitle)
