@@ -1028,11 +1028,13 @@ public class MainActivity extends Activity {
                     DebugLog.i(this,"SUBSCRIPTION","Кэш подписки обновлён при запуске; HTTP "+code);
                     if(startupRefreshToastPending) {
                         startupRefreshToastPending=false;
-                        Toast.makeText(MainActivity.this,"Данные подписки обновлены",Toast.LENGTH_SHORT).show();
+                        runOnUiThread(() ->
+                            Toast.makeText(MainActivity.this,"Данные подписки обновлены",Toast.LENGTH_SHORT).show());
                     }
                 } else DebugLog.w(this,"SUBSCRIPTION","Обновление метаданных при запуске: HTTP "+code);
             } catch(Exception e) {
-                DebugLog.w(this,"SUBSCRIPTION","Не удалось обновить метаданные при запуске: "+e.getClass().getSimpleName());
+                DebugLog.w(this,"SUBSCRIPTION","Не удалось обновить метаданные при запуске: "+
+                    e.getClass().getSimpleName()+": "+e.getMessage()+"\n"+android.util.Log.getStackTraceString(e));
             } finally {
                 if(conn!=null) conn.disconnect();
                 synchronized(MainActivity.this) { subscriptionRefreshInProgress=false; }
@@ -1115,7 +1117,6 @@ public class MainActivity extends Activity {
             .setPositiveButton("Понятно",null).show();
     }
     private void onConnect() {
-        DebugLog.d(this, "UI", "Нажата кнопка подключения; state=" + SeyroVpnService.vpnState);
         DebugLog.i(this,"UI","Нажата кнопка подключения; state="+SeyroVpnService.vpnState);
         if("connected".equals(SeyroVpnService.vpnState)) {
             connect.setEnabled(false); connect.setText("Отключаемся…");
