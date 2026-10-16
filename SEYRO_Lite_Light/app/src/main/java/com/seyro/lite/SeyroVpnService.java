@@ -93,13 +93,14 @@ public class SeyroVpnService extends VpnService {
         long now = System.currentTimeMillis();
         long sinceLastSec = lastProbeStartedAtMs == 0L ? -1L : Math.max(0L, (now - lastProbeStartedAtMs) / 1000L);
         boolean didReset = stepIndex != 0 || successStreak != 0 || nextProbeIntervalSeconds != PROBE_INTERVALS_SECONDS[0];
+        long currentIntervalSec = nextProbeIntervalSeconds;
+        Log.d("PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
+            "s; interval=" + currentIntervalSec + "s; reset=" + didReset);
+        DebugLog.d(this, "PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
+            "s; interval=" + currentIntervalSec + "s; reset=" + didReset + "; reason=" + reason);
         stepIndex = 0;
         successStreak = 0;
         nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[0];
-        Log.d("PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
-            "s; interval=" + nextProbeIntervalSeconds + "s; reset=" + didReset);
-        DebugLog.d(this, "PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
-            "s; interval=" + nextProbeIntervalSeconds + "s; reset=" + didReset + "; reason=" + reason);
         scheduleNextProbe(0);
     }
 
@@ -349,8 +350,8 @@ public class SeyroVpnService extends VpnService {
                 long delay = current.measureDelay("https://www.google.com/generate_204");
                 long elapsed = System.currentTimeMillis() - started;
                 successStreak++;
-                if (successStreak >= 3 && stepIndex < PROBE_INTERVALS_SECONDS.length - 1) {
-                    stepIndex++;
+                if (successStreak >= 3) {
+                    if (stepIndex < PROBE_INTERVALS_SECONDS.length - 1) stepIndex++;
                     successStreak = 0;
                 }
                 nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[stepIndex];
