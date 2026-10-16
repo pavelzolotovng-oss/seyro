@@ -116,12 +116,30 @@ public class MainActivity extends Activity {
         add(root,subscriptionExpiryText,dp(7));
         add(root,text("Безопасный доступ — в одно касание.",14,muted,false),8);
 
-        LinearLayout hero=column(); padding(hero,20,22,20,20); hero.setBackground(shape(white,26,line)); hero.setElevation(2f);
-        add(root,hero,18);
+        LinearLayout safety= new LinearLayout(this); safety.setGravity(Gravity.CENTER_VERTICAL);
+        padding(safety,dp(15),dp(10),dp(15),dp(10));
+        safety.setBackground(shape(0xfff8fcff,dp(18),0xffd9eaff));
+        TextView safetyIcon=text("✓",18,white,true); safetyIcon.setGravity(Gravity.CENTER);
+        safetyIcon.setBackground(shape(0xff18c982,dp(30),0));
+        safety.addView(safetyIcon,new LinearLayout.LayoutParams(dp(34),dp(34)));
+        TextView safetyText=text("Безопасный доступ — в одно касание.",14,0xff526b91,true);
+        LinearLayout.LayoutParams safetyTextP=new LinearLayout.LayoutParams(0,-2,1); safetyTextP.leftMargin=dp(12);
+        safety.addView(safetyText,safetyTextP);
+        add(root,safety,dp(18));
+
+        LinearLayout hero=column(); padding(hero,dp(20),dp(22),dp(20),dp(20));
+        GradientDrawable heroGradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{0xffffffff,0xfff3faff,0xffeaf7ff});
+        heroGradient.setCornerRadius(dp(26)); heroGradient.setStroke(dp(1),0xffdcecff);
+        hero.setBackground(heroGradient); hero.setElevation(dp(4));
+        add(root,hero,dp(12));
         LinearLayout center=column(); center.setGravity(Gravity.CENTER);
         TextView shield=text("S",36,white,true); shield.setGravity(Gravity.CENTER);
-        shield.setBackground(shape(0xff087cff,dp(100),0)); shield.setElevation(dp(5));
-        LinearLayout.LayoutParams shieldP=new LinearLayout.LayoutParams(dp(76),dp(76)); shieldP.gravity=Gravity.CENTER;
+        GradientDrawable shieldGradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{0xff10baff,0xff087cff,0xff0755e8});
+        shieldGradient.setShape(GradientDrawable.OVAL);
+        shield.setBackground(shieldGradient); shield.setElevation(dp(7));
+        LinearLayout.LayoutParams shieldP=new LinearLayout.LayoutParams(dp(94),dp(94)); shieldP.gravity=Gravity.CENTER;
         center.addView(shield,shieldP);
         status=text("●  НЕ ПОДКЛЮЧЕНО",12,muted,true); status.setGravity(Gravity.CENTER);
         add(center,status,dp(12)); hero.addView(center);
@@ -129,13 +147,20 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams protocolP=new LinearLayout.LayoutParams(-2,-2); protocolP.gravity=Gravity.CENTER; protocolP.topMargin=dp(7); center.addView(protocolBadge,protocolP);
         hint=text(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.",13,muted,false);
         hint.setGravity(Gravity.CENTER); add(hero,hint,8);
-        connect=text("⏻    Подключить",16,white,true); connect.setGravity(Gravity.CENTER);
-        padding(connect,16,16,16,16); connect.setBackground(shape(blue,17,0)); connect.setElevation(2f); add(hero,connect,18);
+        connect=text("⏻    Подключить",17,white,true); connect.setGravity(Gravity.CENTER);
+        padding(connect,dp(16),dp(15),dp(16),dp(15));
+        GradientDrawable connectGradient=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{0xff167cff,0xff0860f2,0xff0757e8});
+        connectGradient.setCornerRadius(dp(17)); connect.setBackground(connectGradient);
+        connect.setElevation(dp(4)); add(hero,connect,dp(18));
         connect.setOnClickListener(v->onConnect());
 
         LinearLayout trafficCard=column();
         padding(trafficCard,dp(14),dp(12),dp(14),dp(12));
-        trafficCard.setBackground(shape(0xfff7faff,dp(16),line));
+        GradientDrawable trafficGradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{0xfff8fcff,0xffedf6ff});
+        trafficGradient.setCornerRadius(dp(16)); trafficGradient.setStroke(dp(1),0xffdceaff);
+        trafficCard.setBackground(trafficGradient);
         add(hero,trafficCard,dp(12));
         LinearLayout trafficHeader=new LinearLayout(this);
         trafficHeader.setGravity(Gravity.CENTER_VERTICAL);
@@ -157,7 +182,11 @@ public class MainActivity extends Activity {
         trafficCard.addView(trafficBarTrack,trackP);
         updateSubscriptionWidgets();
 
-        LinearLayout profile=card(); padding(profile,16,5,16,5); profile.setElevation(1f); add(root,profile,14);
+        LinearLayout profile=card(); padding(profile,16,dp(5),16,dp(5));
+        GradientDrawable profileGradient=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{0xffffffff,0xfff1f8ff});
+        profileGradient.setCornerRadius(dp(20)); profileGradient.setStroke(dp(1),0xffdceaff);
+        profile.setBackground(profileGradient); profile.setElevation(dp(2)); add(root,profile,dp(14));
         profile.addView(menuRow("Профиль","Ссылка и параметры аккаунта","↗",()->showProfile()));
         profile.setOnClickListener(v->showProfile());
 
