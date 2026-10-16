@@ -4,6 +4,9 @@
 
 ## 2026-10-16
 
+- **NetworkCallback:** добавлено разрешение `ACCESS_NETWORK_STATE` в AndroidManifest.xml для корректной регистрации `registerDefaultNetworkCallback()` и устранения `SecurityException`.
+- **Коммит манифеста:** `1422dc43d95cf6f9c643ea5ca83771efdcca5518` — Add ACCESS_NETWORK_STATE permission for network callback.
+
 - **HEV_STATS:** отключено журналирование интервалов с низким трафиком: менее 50 TX/RX пакетов и менее 4096 TX/RX байт за интервал.
 - **Интервал статистики:** вместо фиксированного «за 30с» используется фактическая длительность по `SystemClock.elapsedRealtime()`.
 - **Базовые счётчики:** обновляются и в idle-интервалах, чтобы следующая дельта не включала подавленный период.
