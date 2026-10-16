@@ -51,8 +51,11 @@ public class SeyroVpnService extends VpnService {
     private final ScheduledExecutorService probeExecutor = Executors.newSingleThreadScheduledExecutor();
     private ScheduledFuture<?> diagnosticsTask;
     private ScheduledFuture<?> probeTask;
-    private int consecutiveProbeSuccesses = 0;
-    private long nextProbeIntervalSeconds = 60;
+    private static final long[] PROBE_INTERVALS_SECONDS = {30, 60, 120, 180, 240, 300};
+    private int stepIndex = 0;
+    private int successStreak = 0;
+    private long nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[0];
+    private volatile long lastProbeStartedAtMs = 0L;
     private final Map<String, Long> previousXrayCounters = new HashMap<>();
     private long[] previousHevStats;
     private ParcelFileDescriptor tun;
@@ -87,9 +90,16 @@ public class SeyroVpnService extends VpnService {
             DebugLog.d(this, "PROBE", "Probe пропущен: Xray ещё не запущен");
             return;
         }
-        consecutiveProbeSuccesses = 0;
-        nextProbeIntervalSeconds = 30;
-        DebugLog.i(this, "PROBE", "Внеочередная проверка: " + reason);
+        long now = System.currentTimeMillis();
+        long sinceLastSec = lastProbeStartedAtMs == 0L ? -1L : Math.max(0L, (now - lastProbeStartedAtMs) / 1000L);
+        boolean didReset = stepIndex != 0 || successStreak != 0 || nextProbeIntervalSeconds != PROBE_INTERVALS_SECONDS[0];
+        stepIndex = 0;
+        successStreak = 0;
+        nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[0];
+        Log.d("PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
+            "s; interval=" + nextProbeIntervalSeconds + "s; reset=" + didReset);
+        DebugLog.d(this, "PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
+            "s; interval=" + nextProbeIntervalSeconds + "s; reset=" + didReset + "; reason=" + reason);
         scheduleNextProbe(0);
     }
 
@@ -277,7 +287,7 @@ public class SeyroVpnService extends VpnService {
         if (diagnosticsTask != null) diagnosticsTask.cancel(true);
         if (probeTask != null) probeTask.cancel(true);
         previousXrayCounters.clear(); previousHevStats = null;
-        consecutiveProbeSuccesses = 0; nextProbeIntervalSeconds = 60;
+        stepIndex = 0; successStreak = 0; nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[0];
         DebugLog.d(this, "DIAGNOSTICS", "Сбор статистики запущен: период 30 секунд");
         diagnosticsTask = diagnosticsExecutor.scheduleWithFixedDelay(() -> {
             CoreController current = controller;
@@ -311,31 +321,59 @@ public class SeyroVpnService extends VpnService {
         if(out.length()>0) DebugLog.d(this,"TRAFFIC","за 30с: "+out);
     }
 
+    private void logProbe(String message) {
+        Log.d("PROBE", message);
+        DebugLog.d(this, "PROBE", message);
+    }
+
     private void scheduleNextProbe(long delaySeconds) {
-        if(probeTask!=null) probeTask.cancel(false);
-        probeTask=probeExecutor.schedule(() -> {
-            if (probeInProgress) { scheduleNextProbe(5); return; }
+        if (probeTask != null) probeTask.cancel(false);
+        probeTask = probeExecutor.schedule(() -> {
+            if (probeInProgress) {
+                scheduleNextProbe(5);
+                return;
+            }
             probeInProgress = true;
-            CoreController current=controller;
-            if(current==null || !current.getIsRunning()) { scheduleNextProbe(60); return; }
-            long started=System.currentTimeMillis();
-            DebugLog.d(this, "PROBE", "Начинается measureDelay; плановый интервал=" + nextProbeIntervalSeconds + " s");
+            CoreController current = controller;
+            if (current == null || !current.getIsRunning()) {
+                probeInProgress = false;
+                scheduleNextProbe(PROBE_INTERVALS_SECONDS[0]);
+                return;
+            }
+            long started = System.currentTimeMillis();
+            lastProbeStartedAtMs = started;
+            long plannedIntervalSec = nextProbeIntervalSeconds;
+            logProbe("Начинается measureDelay; плановый интервал=" + plannedIntervalSec +
+                "s; streak=" + successStreak + "; step=" + stepIndex);
             try {
-                long delay=current.measureDelay("https://www.google.com/generate_204"); long elapsed=System.currentTimeMillis()-started;
-                consecutiveProbeSuccesses++;
-                if(consecutiveProbeSuccesses>=3) nextProbeIntervalSeconds=Math.min(300,nextProbeIntervalSeconds+60);
-                DebugLog.d(this,"PROBE","Проверка успешна: delay="+delay+" ms; elapsed="+elapsed+" ms; следующий интервал="+nextProbeIntervalSeconds+" s");
+                long delay = current.measureDelay("https://www.google.com/generate_204");
+                long elapsed = System.currentTimeMillis() - started;
+                successStreak++;
+                if (successStreak >= 3 && stepIndex < PROBE_INTERVALS_SECONDS.length - 1) {
+                    stepIndex++;
+                    successStreak = 0;
+                }
+                nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[stepIndex];
+                logProbe("Проверка успешна: delay=" + delay + "ms; elapsed=" + elapsed +
+                    "ms; streak=" + successStreak + "/3; step=" + stepIndex +
+                    "; следующий интервал=" + nextProbeIntervalSeconds + "s");
                 probeInProgress = false;
                 scheduleNextProbe(nextProbeIntervalSeconds);
-            } catch(Exception e) {
+            } catch (Exception e) {
                 probeInProgress = false;
-                consecutiveProbeSuccesses=0; nextProbeIntervalSeconds=30;
-                String detail=e.getMessage(); if(detail==null || detail.trim().isEmpty()) detail=e.toString();
-                detail=detail.replaceAll("(?i)vless://[^\\s]+","vless://[redacted]"); if(detail.length()>240) detail=detail.substring(0,240);
-                DebugLog.w(this,"PROBE","Проверка не удалась: "+e.getClass().getSimpleName()+"; detail="+detail+"; elapsed="+(System.currentTimeMillis()-started)+" ms; повтор через 30 s");
-                scheduleNextProbe(30);
+                successStreak = 0;
+                stepIndex = 0;
+                nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[0];
+                String detail = e.getMessage();
+                if (detail == null || detail.trim().isEmpty()) detail = e.toString();
+                detail = detail.replaceAll("(?i)vless://[^\\s]+", "vless://[redacted]");
+                if (detail.length() > 240) detail = detail.substring(0, 240);
+                logProbe("Проверка не удалась: error=" + e.getClass().getSimpleName() +
+                    (detail.isEmpty() ? "" : " (" + detail + ")") +
+                    "; streak=0; step сброшен; следующий интервал=30s");
+                scheduleNextProbe(PROBE_INTERVALS_SECONDS[0]);
             }
-        },delaySeconds,TimeUnit.SECONDS);
+        }, delaySeconds, TimeUnit.SECONDS);
     }
     private void stopVpn() {
         if (diagnosticsTask != null) { diagnosticsTask.cancel(true); diagnosticsTask = null; }
