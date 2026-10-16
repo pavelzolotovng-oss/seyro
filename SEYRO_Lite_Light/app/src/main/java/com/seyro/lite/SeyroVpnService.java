@@ -58,6 +58,11 @@ public class SeyroVpnService extends VpnService {
     private volatile long lastProbeStartedAtMs = 0L;
     private final Map<String, Long> previousXrayCounters = new HashMap<>();
     private long[] previousHevStats;
+    private long lastStatsAtElapsed = 0L;
+    private static final long STATS_IDLE_TX_PACKETS = 50;
+    private static final long STATS_IDLE_RX_PACKETS = 50;
+    private static final long STATS_IDLE_TX_BYTES = 4096;
+    private static final long STATS_IDLE_RX_BYTES = 4096;
     private ParcelFileDescriptor tun;
     private CoreController controller;
     private boolean hevStarted = false;
@@ -292,6 +297,7 @@ public class SeyroVpnService extends VpnService {
         if (diagnosticsTask != null) diagnosticsTask.cancel(true);
         if (probeTask != null) probeTask.cancel(true);
         previousXrayCounters.clear(); previousHevStats = null;
+        lastStatsAtElapsed = 0L;
         stepIndex = 0; successStreak = 0; nextProbeIntervalSeconds = PROBE_INTERVALS_SECONDS[0];
         DebugLog.d(this, "DIAGNOSTICS", "Сбор статистики запущен: период 30 секунд");
         diagnosticsTask = diagnosticsExecutor.scheduleWithFixedDelay(() -> {
@@ -303,10 +309,31 @@ public class SeyroVpnService extends VpnService {
                 if (hevStarted && TProxyService.TProxyIsRunning()) {
                     long[] stats = TProxyService.TProxyGetStats();
                     if (stats != null && stats.length >= 4) {
-                        long[] delta = new long[4]; boolean hasDelta = previousHevStats != null;
-                        for (int i=0;i<4;i++) { delta[i] = previousHevStats == null || stats[i] < previousHevStats[i] ? 0 : stats[i]-previousHevStats[i]; if(delta[i]!=0) hasDelta=true; }
+                        long nowElapsed = android.os.SystemClock.elapsedRealtime();
+                        long intervalSec = lastStatsAtElapsed == 0L
+                                ? 0L
+                                : (nowElapsed - lastStatsAtElapsed) / 1000L;
+                        lastStatsAtElapsed = nowElapsed;
+
+                        long[] delta = new long[4];
+                        for (int i=0;i<4;i++) {
+                            delta[i] = previousHevStats == null || stats[i] < previousHevStats[i]
+                                    ? 0
+                                    : stats[i] - previousHevStats[i];
+                        }
+                        // Advance the baseline even when suppressing an idle interval.
                         previousHevStats = new long[]{stats[0],stats[1],stats[2],stats[3]};
-                        if(hasDelta) DebugLog.d(this,"HEV_STATS","за 30с: txPackets=+"+delta[0]+"; txBytes=+"+delta[1]+"; rxPackets=+"+delta[2]+"; rxBytes=+"+delta[3]);
+
+                        boolean isIdle = delta[0] < STATS_IDLE_TX_PACKETS
+                                && delta[2] < STATS_IDLE_RX_PACKETS
+                                && delta[1] < STATS_IDLE_TX_BYTES
+                                && delta[3] < STATS_IDLE_RX_BYTES;
+                        if (!isIdle) {
+                            DebugLog.d(this, "HEV_STATS",
+                                    "за " + intervalSec + "с: "
+                                    + "txPackets=+" + delta[0] + "; txBytes=+" + delta[1]
+                                    + "; rxPackets=+" + delta[2] + "; rxBytes=+" + delta[3]);
+                        }
                     }
                 }
             } catch(Exception e) { DebugLog.w(this,"TRAFFIC","counter read failed: "+e.getClass().getSimpleName()); }
