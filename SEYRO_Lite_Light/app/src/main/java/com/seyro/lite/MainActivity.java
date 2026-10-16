@@ -188,6 +188,11 @@ public class MainActivity extends Activity {
         renderVpnState();
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        SeyroVpnService.requestImmediateProbe("возврат в приложение / разблокировка экрана");
+    }
+
     @Override protected void onStop() {
         if(vpnStateReceiverRegistered) { unregisterReceiver(vpnStateReceiver); vpnStateReceiverRegistered=false; }
         super.onStop();
