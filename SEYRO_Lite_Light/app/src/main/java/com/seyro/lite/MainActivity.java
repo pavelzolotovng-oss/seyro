@@ -177,6 +177,7 @@ public class MainActivity extends Activity {
         setContentView(scroll);
         renderVpnState();
         if(!profileLink.isEmpty()) refreshSubscriptionMetadataInBackground();
+        checkForAppUpdate(false);
     }
 
     @Override protected void onStart() {
@@ -191,6 +192,11 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         SeyroVpnService.requestImmediateProbe("возврат в приложение / разблокировка экрана");
+        if (pendingInstallAfterPermission) {
+            pendingInstallAfterPermission = false;
+            java.io.File apk = new java.io.File(getCacheDir(), "updates/seyro-lite-update.apk");
+            if (Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls()) installDownloadedUpdate(apk);
+        }
     }
 
     @Override protected void onStop() {
@@ -1111,6 +1117,138 @@ public class MainActivity extends Activity {
         DebugLog.i(this,"SUBSCRIPTION","Метаданные сохранены в кэш: title="+(!subscriptionTitle.isEmpty())+
             "; announce="+(!subscriptionAnnounce.isEmpty())+"; userinfo="+(userInfo!=null));
     }
+
+    private static final String UPDATE_API = "https://api.github.com/repos/pavelzolotovng-oss/seyro-lite/releases?per_page=1";
+    private volatile boolean updateCheckInProgress = false;
+    private boolean pendingInstallAfterPermission = false;
+
+    private synchronized void checkForAppUpdate(boolean force) {
+        if (updateCheckInProgress) return;
+        long last = prefs.getLong("last_update_check_at", 0L);
+        if (!force && System.currentTimeMillis() - last < 6L * 60L * 60L * 1000L) return;
+        updateCheckInProgress = true;
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            try {
+                conn = (java.net.HttpURLConnection) new URL(UPDATE_API).openConnection();
+                conn.setConnectTimeout(8000); conn.setReadTimeout(10000);
+                conn.setRequestProperty("Accept", "application/vnd.github+json");
+                conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+                conn.setRequestProperty("User-Agent", "SEYRO-Lite/" + APP_VERSION);
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) throw new java.io.IOException("GitHub HTTP " + code);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                try (InputStream in = conn.getInputStream()) {
+                    byte[] buf = new byte[4096]; int n;
+                    while ((n = in.read(buf)) != -1 && out.size() < 1000000) out.write(buf, 0, n);
+                }
+                JSONArray releases = new JSONArray(new String(out.toByteArray(), StandardCharsets.UTF_8));
+                if (releases.length() == 0) return;
+                JSONObject release = releases.getJSONObject(0);
+                if (release.optBoolean("draft", true)) return;
+                int remoteCode = parseBuildCode(release.optString("tag_name", ""));
+                if (remoteCode <= BuildConfig.VERSION_CODE) {
+                    prefs.edit().putLong("last_update_check_at", System.currentTimeMillis()).apply();
+                    return;
+                }
+                JSONArray assets = release.optJSONArray("assets");
+                String apkUrl = null;
+                if (assets != null) for (int i = 0; i < assets.length(); i++) {
+                    JSONObject asset = assets.optJSONObject(i);
+                    if (asset != null && "app-debug.apk".equals(asset.optString("name"))) {
+                        apkUrl = asset.optString("browser_download_url", null); break;
+                    }
+                }
+                if (apkUrl == null || !apkUrl.startsWith("https://github.com/")) return;
+                prefs.edit().putLong("last_update_check_at", System.currentTimeMillis()).apply();
+                final String version = release.optString("name", "сборка " + remoteCode);
+                final String notes = release.optString("body", "");
+                final String download = apkUrl;
+                runOnUiThread(() -> showAppUpdateDialog(version, notes, download));
+            } catch (Exception e) {
+                DebugLog.w(this, "UPDATE", "Проверка обновлений не удалась: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            } finally {
+                if (conn != null) conn.disconnect();
+                synchronized (MainActivity.this) { updateCheckInProgress = false; }
+            }
+        }, "seyro-update-check").start();
+    }
+
+    private int parseBuildCode(String tag) {
+        if (tag == null || !tag.startsWith("debug-build-")) return -1;
+        try { return Integer.parseInt(tag.substring("debug-build-".length())); }
+        catch (NumberFormatException ignored) { return -1; }
+    }
+
+    private void showAppUpdateDialog(String version, String notes, String apkUrl) {
+        if (isFinishing()) return;
+        String message = "Доступна новая сборка: " + version
+            + "\nУстановленная версия: " + APP_VERSION
+            + "\n\nAPK подписан тем же ключом, поэтому установится поверх текущего приложения."
+            + (notes.isEmpty() ? "" : "\n\n" + notes);
+        new AlertDialog.Builder(this).setTitle("Доступно обновление SEYRO Lite").setMessage(message)
+            .setPositiveButton("Скачать и установить", (d, w) -> downloadUpdate(apkUrl))
+            .setNeutralButton("Проверить сейчас", (d, w) -> checkForAppUpdate(true))
+            .setNegativeButton("Позже", null).show();
+    }
+
+    private void downloadUpdate(String apkUrl) {
+        Toast.makeText(this, "Скачиваем обновление…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            try {
+                java.io.File dir = new java.io.File(getCacheDir(), "updates");
+                if (!dir.exists() && !dir.mkdirs()) throw new java.io.IOException("Не удалось создать каталог обновления");
+                java.io.File apk = new java.io.File(dir, "seyro-lite-update.apk");
+                conn = (java.net.HttpURLConnection) new URL(apkUrl).openConnection();
+                conn.setConnectTimeout(15000); conn.setReadTimeout(30000); conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "SEYRO-Lite/" + APP_VERSION);
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) throw new java.io.IOException("HTTP " + code);
+                try (InputStream in = conn.getInputStream(); java.io.FileOutputStream fileOut = new java.io.FileOutputStream(apk)) {
+                    byte[] buf = new byte[8192]; int n; long total = 0;
+                    while ((n = in.read(buf)) != -1) {
+                        total += n;
+                        if (total > 150L * 1024L * 1024L) throw new java.io.IOException("APK превышает допустимый размер");
+                        fileOut.write(buf, 0, n);
+                    }
+                }
+                if (!apk.isFile() || apk.length() == 0) throw new java.io.IOException("Скачанный APK пуст");
+                runOnUiThread(() -> { Toast.makeText(this, "Обновление скачано", Toast.LENGTH_SHORT).show(); installDownloadedUpdate(apk); });
+            } catch (Exception e) {
+                DebugLog.w(this, "UPDATE", "Не удалось скачать обновление: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("Ошибка обновления")
+                    .setMessage("Не удалось скачать APK. Проверьте интернет и попробуйте позже.")
+                    .setPositiveButton("Проверить снова", (d, w) -> checkForAppUpdate(true))
+                    .setNegativeButton("Закрыть", null).show());
+            } finally { if (conn != null) conn.disconnect(); }
+        }, "seyro-update-download").start();
+    }
+
+    private void installDownloadedUpdate(java.io.File apk) {
+        if (apk == null || !apk.isFile() || apk.length() == 0) return;
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            pendingInstallAfterPermission = true;
+            new AlertDialog.Builder(this).setTitle("Разрешите установку обновлений")
+                .setMessage("Android требует разрешить установку приложений из этого источника. Включите разрешение для SEYRO, затем вернитесь в приложение.")
+                .setPositiveButton("Открыть настройки", (d, w) -> startActivity(new Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    android.net.Uri.parse("package:" + getPackageName()))))
+                .setNegativeButton("Позже", (d, w) -> pendingInstallAfterPermission = false).show();
+            return;
+        }
+        try {
+            android.net.Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", apk);
+            Intent install = new Intent(Intent.ACTION_VIEW);
+            install.setDataAndType(uri, "application/vnd.android.package-archive");
+            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(install);
+        } catch (Exception e) {
+            DebugLog.e(this, "UPDATE", "Не удалось открыть установщик: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            Toast.makeText(this, "Не удалось открыть установщик Android", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void showHelp() {
         new AlertDialog.Builder(this).setTitle("Помощь")
             .setMessage("Добавьте постоянную ссылку из личного кабинета SEYRO. Добавьте ссылку профиля VLESS + REALITY из личного кабинета SEYRO. Если подключение не запускается, проверьте ссылку и доступ к серверу.")
