@@ -60,13 +60,15 @@ public class MainActivity extends Activity {
         if(stroke!=0)d.setStroke(1,stroke); return d;
     }
     private TextView text(String s,int size,int color,boolean bold) {
-        TextView v=new TextView(this); v.setText(s); v.setTextSize(size); v.setTextColor(color);
+        TextView v=new TextView(this); v.setText(s); v.setTextSize(size * 0.95f); v.setTextColor(color);
         if(bold)v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         v.setIncludeFontPadding(true); return v;
     }
     private LinearLayout column() { LinearLayout l=new LinearLayout(this); l.setOrientation(1); return l; }
-    private void padding(View v,int l,int t,int r,int b) { v.setPadding(l,t,r,b); }
-    private int dp(float value) { return (int)(value * getResources().getDisplayMetrics().density + 0.5f); }
+    private void padding(View v,int l,int t,int r,int b) {
+        v.setPadding(Math.round(l*0.95f),Math.round(t*0.95f),Math.round(r*0.95f),Math.round(b*0.95f));
+    }
+    private int dp(float value) { return (int)(value * 0.95f * getResources().getDisplayMetrics().density + 0.5f); }
     private LinearLayout card() {
         LinearLayout l=column(); padding(l,16,15,16,15);
         l.setBackground(shape(white,20,line)); return l;
@@ -182,24 +184,10 @@ public class MainActivity extends Activity {
         trafficCard.addView(trafficBarTrack,trackP);
         updateSubscriptionWidgets();
 
-        LinearLayout profile=card(); padding(profile,16,dp(5),16,dp(5));
-        GradientDrawable profileGradient=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-            new int[]{0xffffffff,0xfff1f8ff});
-        profileGradient.setCornerRadius(dp(20)); profileGradient.setStroke(dp(1),0xffdceaff);
-        profile.setBackground(profileGradient); profile.setElevation(dp(2)); add(root,profile,dp(14));
-        profile.addView(menuRow("Профиль","Ссылка и параметры аккаунта","↗",()->showProfile()));
-        profile.setOnClickListener(v->showProfile());
-
-        LinearLayout pair=new LinearLayout(this); LinearLayout.LayoutParams pairP=new LinearLayout.LayoutParams(-1,-2);
-        pairP.topMargin=12; root.addView(pair,pairP);
-        LinearLayout sub=card(); sub.setElevation(1f); LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-2,1); hp.rightMargin=6;
-        pair.addView(sub,hp); sub.setOnClickListener(v->showSubscription());
-        sub.addView(text("ПОДПИСКА",10,muted,true));
-        subscriptionState=text(profileLink.isEmpty()?"Не настроена":(subscriptionExpire>0?"Активна до "+new java.text.SimpleDateFormat("dd.MM.yyyy",java.util.Locale.getDefault()).format(new java.util.Date(subscriptionExpire*1000L)):"Профиль добавлен"),14,ink,true);
-        add(sub,subscriptionState,7);
-        LinearLayout help=card(); help.setElevation(1f); LinearLayout.LayoutParams hp2=new LinearLayout.LayoutParams(0,-2,1); hp2.leftMargin=6;
-        pair.addView(help,hp2); help.setOnClickListener(v->showHelp());
-        help.addView(text("НУЖНА ПОМОЩЬ?",10,muted,true)); add(help,text("Поддержка  ›",14,blue,true),7);
+        LinearLayout help=card(); help.setElevation(dp(2)); add(root,help,dp(14));
+        help.setOnClickListener(v->showHelp());
+        help.addView(text("НУЖНА ПОМОЩЬ?",10,muted,true));
+        add(help,text("Поддержка  ›",14,blue,true),7);
 
         TextView footer=text("SEYRO LITE  ·  ВЕРСИЯ "+APP_VERSION,10,0xff93a0b5,true);
         footer.setGravity(Gravity.CENTER); add(root,footer,20);
