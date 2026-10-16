@@ -308,11 +308,48 @@ public class MainActivity extends Activity {
             remove.setGravity(Gravity.CENTER);
             remove.setPadding(dp(12),dp(13),dp(12),dp(10));
             add(box,remove,dp(8));
-            remove.setOnClickListener(v->new AlertDialog.Builder(this)
-                .setTitle("Удалить профиль?")
-                .setMessage("Сохранённая ссылка будет удалена с этого устройства. Для подключения потребуется добавить её снова.")
-                .setNegativeButton("Оставить",null)
-                .setPositiveButton("Удалить",(dialog,which)->{
+            remove.setOnClickListener(v->{
+                LinearLayout confirmBox=column();
+                padding(confirmBox,dp(20),dp(20),dp(20),dp(16));
+                confirmBox.setBackground(shape(white,dp(24),0));
+
+                TextView title=text("Удалить профиль?",19,ink,true);
+                add(confirmBox,title,dp(2));
+
+                TextView message=text(
+                    "Сохранённая ссылка будет удалена с этого устройства. Для подключения потребуется добавить её снова.",
+                    14,muted,false);
+                message.setLineSpacing(dp(3),1.0f);
+                add(confirmBox,message,dp(10));
+
+                LinearLayout confirmActions=new LinearLayout(this);
+                confirmActions.setOrientation(LinearLayout.HORIZONTAL);
+                confirmActions.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams confirmActionsP=new LinearLayout.LayoutParams(-1,-2);
+                confirmActionsP.topMargin=dp(16);
+                confirmBox.addView(confirmActions,confirmActionsP);
+
+                TextView keep=text("Оставить",14,blue,true);
+                keep.setGravity(Gravity.CENTER);
+                keep.setPadding(dp(8),dp(12),dp(8),dp(12));
+                keep.setBackground(shape(paleBlue,dp(14),0));
+                LinearLayout.LayoutParams keepP=new LinearLayout.LayoutParams(0,-2,1);
+                keepP.rightMargin=dp(6);
+                confirmActions.addView(keep,keepP);
+
+                TextView delete=text("Удалить",14,0xffb4232f,true);
+                delete.setGravity(Gravity.CENTER);
+                delete.setPadding(dp(8),dp(12),dp(8),dp(12));
+                delete.setBackground(shape(0xffffe8e9,dp(14),0));
+                LinearLayout.LayoutParams deleteP=new LinearLayout.LayoutParams(0,-2,1);
+                deleteP.leftMargin=dp(6);
+                confirmActions.addView(delete,deleteP);
+
+                AlertDialog confirmDialog=new AlertDialog.Builder(this).setView(confirmBox).create();
+                confirmDialog.setOnShowListener(ignored->styleCustomDialog(confirmDialog,0.58f));
+                keep.setOnClickListener(ignored->confirmDialog.dismiss());
+                delete.setOnClickListener(ignored->{
+                    confirmDialog.dismiss();
                     profileLink="";
                     clearCachedSubscriptionMetadata();
                     selectedConfig="";
@@ -321,7 +358,9 @@ public class MainActivity extends Activity {
                     prefs.edit().remove("subscription_link").remove("selected_transport").apply();
                     DebugLog.i(this,"PROFILE","Ссылка подписки удалена");
                     refreshProfileState();
-                }).show());
+                });
+                confirmDialog.show();
+            });
         }
 
         LinearLayout actions=new LinearLayout(this);
