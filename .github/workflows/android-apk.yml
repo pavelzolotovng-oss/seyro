@@ -87,23 +87,42 @@ jobs:
           path: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Generate release notes from changes
+      - name: Generate Russian release notes
         env:
           VERSION_NAME: ${{ steps.meta.outputs.version_name }}
         run: |
           LAST_TAG="$(git tag --list 'debug-build-*' --sort=-version:refname | head -n 1)"
           if [ -n "$LAST_TAG" ]; then
-            CHANGES="$(git log "$LAST_TAG..HEAD" --no-merges --pretty=format:'• %s' -n 12)"
+            RANGE="$LAST_TAG..HEAD"
           else
-            CHANGES="$(git log --no-merges --pretty=format:'• %s' -n 8)"
+            RANGE="HEAD"
           fi
-          if [ -z "$CHANGES" ]; then
-            CHANGES="• Исправления и улучшения приложения."
+          RAW="$(git log "$RANGE" --no-merges --pretty=format:'%s' -n 12)"
+          NOTES=""
+          while IFS= read -r subject; do
+            [ -z "$subject" ] && continue
+            lower="$(printf '%s' "$subject" | tr '[:upper:]' '[:lower:]')"
+            case "$lower" in
+              *backoff*|*403*|*429*|*rate.limit*) line="• Уменьшено количество автоматических запросов и улучшена обработка ограничений сервера." ;;
+              *subscription*|*vip*|*traffic*|*metadata*) line="• Улучшено отображение подписки, VIP-статуса и статистики трафика." ;;
+              *update*|*release.note*|*apk*|*download*) line="• Улучшено обновление приложения и отображение информации о новых версиях." ;;
+              *animation*|*power.icon*|*clipping*|*interface*|*ui*|*design*|*layout*) line="• Улучшен интерфейс и анимация приложения." ;;
+              *probe*|*latency*|*quality*|*connection*) line="• Улучшено отображение состояния и качества VPN-соединения." ;;
+              *protocol*|*xhttp*|*grpc*|*tcp*|*xray*) line="• Улучшена работа VPN-подключения и сетевых профилей." ;;
+              *) line="• Выполнены технические улучшения и исправления приложения." ;;
+            esac
+            case "$NOTES" in *"$line"*) ;; *) NOTES="${NOTES}${NOTES:+
+          }$line" ;; esac
+          done <<EOF
+          $RAW
+          EOF
+          if [ -z "$NOTES" ]; then
+            NOTES="• Исправлены ошибки и повышена стабильность приложения."
           fi
           {
-            echo "Изменения в SEYRO Lite $VERSION_NAME"
+            echo "Что нового в SEYRO Lite $VERSION_NAME"
             echo
-            echo "$CHANGES"
+            echo "$NOTES"
           } > release-notes.md
       - name: Publish successful build as a prerelease
         uses: softprops/action-gh-release@v2
