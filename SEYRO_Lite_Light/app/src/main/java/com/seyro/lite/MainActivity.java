@@ -1152,6 +1152,9 @@ public class MainActivity extends Activity {
     private volatile boolean subscriptionRefreshInProgress=false;
     private long lastSubscriptionRefreshAt=0L;
     private boolean startupRefreshToastPending=true;
+    private static final String PREF_SUBSCRIPTION_RETRY_AT="subscription_retry_at";
+    private static final String PREF_SUBSCRIPTION_RETRY_ATTEMPT="subscription_retry_attempt";
+    private static final long[] SUBSCRIPTION_BACKOFF_MS={60_000L,120_000L,300_000L,900_000L};
 
     private void refreshSubscriptionMetadataInBackground() {
         refreshSubscriptionMetadataInBackground(false);
@@ -1160,8 +1163,17 @@ public class MainActivity extends Activity {
     private synchronized void refreshSubscriptionMetadataInBackground(boolean force) {
         final String link=profileLink;
         long now=System.currentTimeMillis();
-        // Lifecycle callbacks can fire back-to-back (create/start/resume). Do not
-        // issue duplicate requests; an explicit tap on "Обновить подписку" bypasses the cooldown.
+        if(link==null || link.trim().isEmpty()) return;
+        long retryAt=prefs.getLong(PREF_SUBSCRIPTION_RETRY_AT,0L);
+        // Respect server throttling even for manual refreshes; repeated taps must not
+        // bypass a 403/429 backoff and trigger another rate-limit response.
+        if(now<retryAt) {
+            long waitSeconds=Math.max(1L,(retryAt-now+999L)/1000L);
+            DebugLog.d(this,"SUBSCRIPTION","Пропуск запроса (backoff): повтор через "+waitSeconds+" с");
+            return;
+        }
+        // Lifecycle callbacks can fire back-to-back (create/settings). Keep a short
+        // cooldown for ordinary requests and suppress concurrent requests.
         if(subscriptionRefreshInProgress || (!force && (now-lastSubscriptionRefreshAt)<30000L)) return;
         subscriptionRefreshInProgress=true;
         lastSubscriptionRefreshAt=now;
@@ -1178,6 +1190,10 @@ public class MainActivity extends Activity {
                 DebugLog.d(this, "SUBSCRIPTION", "Ожидание HTTP-ответа подписки");
             int code=conn.getResponseCode();
                 if(code>=200 && code<300) {
+                    prefs.edit()
+                        .putLong(PREF_SUBSCRIPTION_RETRY_AT,0L)
+                        .putInt(PREF_SUBSCRIPTION_RETRY_ATTEMPT,0)
+                        .apply();
                     readSubscriptionMetadata(conn);
                     runOnUiThread(() -> {
                         if(!link.equals(profileLink)) return;
@@ -1191,6 +1207,17 @@ public class MainActivity extends Activity {
                         runOnUiThread(() ->
                             Toast.makeText(MainActivity.this,"Данные подписки обновлены",Toast.LENGTH_SHORT).show());
                     }
+                } else if(code==403 || code==429) {
+                    int attempt=prefs.getInt(PREF_SUBSCRIPTION_RETRY_ATTEMPT,0);
+                    int delayIndex=Math.min(attempt,SUBSCRIPTION_BACKOFF_MS.length-1);
+                    long delay=SUBSCRIPTION_BACKOFF_MS[delayIndex];
+                    long nextRetry=System.currentTimeMillis()+delay;
+                    prefs.edit()
+                        .putInt(PREF_SUBSCRIPTION_RETRY_ATTEMPT,Math.min(attempt+1,SUBSCRIPTION_BACKOFF_MS.length-1))
+                        .putLong(PREF_SUBSCRIPTION_RETRY_AT,nextRetry)
+                        .apply();
+                    DebugLog.w(this,"SUBSCRIPTION","HTTP "+code+"; backoff "+
+                        (delay/60000L)+" мин, следующая попытка не раньше "+nextRetry);
                 } else DebugLog.w(this,"SUBSCRIPTION","Обновление метаданных при запуске: HTTP "+code);
             } catch(Exception e) {
                 DebugLog.w(this,"SUBSCRIPTION","Не удалось обновить метаданные при запуске: "+
