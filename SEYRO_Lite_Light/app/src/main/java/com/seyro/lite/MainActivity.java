@@ -1277,17 +1277,24 @@ public class MainActivity extends Activity {
     }
 
     private boolean isUnlimitedVip() {
+        String title=subscriptionTitle==null?"":subscriptionTitle.toLowerCase(java.util.Locale.ROOT);
         String announce=subscriptionAnnounce==null?"":subscriptionAnnounce.toLowerCase(java.util.Locale.ROOT);
-        // The subscription endpoint uses total=0 to indicate an unlimited traffic quota.
-        // The announce header may contain only a greeting, not the VIP status.
-        return trafficTotal==0 || announce.contains("vip-доступ активен") || announce.contains("vip access active");
+        // Confirmed server behavior: normal subscriptions can also send total=0.
+        // VIP is identified by the explicit SEYRO VIP title or VIP announcement.
+        return title.contains("vip")
+            || announce.contains("vip-доступ")
+            || announce.contains("vip access")
+            || announce.contains("vip");
     }
 
     private String greetingText() {
         String greeting=!subscriptionAnnounce.isEmpty()?subscriptionAnnounce:
             (!subscriptionTitle.isEmpty()?"Добро пожаловать, "+subscriptionTitle:"Ваш интернет.\nПод защитой.");
         String announce=subscriptionAnnounce==null?"":subscriptionAnnounce.toLowerCase(java.util.Locale.ROOT);
-        if(trafficTotal==0 && !announce.contains("vip-доступ активен") && !announce.contains("vip access active"))
+        if(isUnlimitedVip()
+                && !announce.contains("vip-доступ")
+                && !announce.contains("vip access")
+                && !announce.contains("vip"))
             return greeting+" · VIP-доступ активен";
         return greeting;
     }
@@ -1312,7 +1319,7 @@ public class MainActivity extends Activity {
     private void readSubscriptionMetadata(java.net.HttpURLConnection conn) {
         String title=decodeMetadataHeader(conn.getHeaderField("profile-title"));
         String announce=decodeMetadataHeader(conn.getHeaderField("announce"));
-        if(!title.isEmpty()) subscriptionTitle=title;
+        subscriptionTitle=title;
         // announce is authoritative too: clear a previous VIP message when the server
         // stops sending it (for example after VIP is disabled).
         subscriptionAnnounce=announce;
