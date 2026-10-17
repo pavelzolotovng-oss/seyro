@@ -29,6 +29,8 @@ jobs:
         run: echo "version_name=0.9.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -85,14 +87,29 @@ jobs:
           path: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Generate release notes from changes
+        env:
+          VERSION_NAME: ${{ steps.meta.outputs.version_name }}
+        run: |
+          LAST_TAG="$(git tag --list 'debug-build-*' --sort=-version:refname | head -n 1)"
+          if [ -n "$LAST_TAG" ]; then
+            CHANGES="$(git log "$LAST_TAG..HEAD" --no-merges --pretty=format:'• %s' -n 12)"
+          else
+            CHANGES="$(git log --no-merges --pretty=format:'• %s' -n 8)"
+          fi
+          if [ -z "$CHANGES" ]; then
+            CHANGES="• Исправления и улучшения приложения."
+          fi
+          {
+            echo "Изменения в SEYRO Lite $VERSION_NAME"
+            echo
+            echo "$CHANGES"
+          } > release-notes.md
       - name: Publish successful build as a prerelease
         uses: softprops/action-gh-release@v2
         with:
           tag_name: debug-build-${{ github.run_number }}
           name: SEYRO Lite ${{ steps.meta.outputs.version_name }}
-          body: |
-            Автоматическая тестовая сборка SEYRO Lite.
-            Версия: ${{ steps.meta.outputs.version_name }}
-            versionCode: ${{ github.run_number }}
+          body_path: release-notes.md
           prerelease: true
           files: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
