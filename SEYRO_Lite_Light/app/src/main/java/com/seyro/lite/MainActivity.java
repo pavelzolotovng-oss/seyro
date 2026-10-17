@@ -1097,15 +1097,32 @@ public class MainActivity extends Activity {
             trafficProgressFill.setVisibility(View.GONE);
             return;
         }
-        if(trafficTotal<=0 || (trafficUpload<0 && trafficDownload<0)) {
+        boolean unlimitedVip=isUnlimitedVip();
+        if(trafficUpload<0 && trafficDownload<0) {
             trafficPercent.setText("—");
             trafficSummary.setText(isSubscriptionExpired()
                 ? "Подписка истекла · данные о трафике недоступны"
-                : "Лимит трафика пока недоступен от сервера");
+                : "Данные о трафике пока недоступны от сервера");
             trafficProgressFill.setVisibility(View.GONE);
             return;
         }
         long used=Math.max(0,trafficUpload)+Math.max(0,trafficDownload);
+        if(unlimitedVip && trafficTotal<=0) {
+            // The admin panel represents VIP traffic with an unlimited quota (∞).
+            // Do not reuse an old cached quota or invent a percentage for unlimited plans.
+            trafficPercent.setText("∞");
+            trafficSummary.setText(formatBytes(used)+" использовано · безлимитный трафик");
+            trafficProgressFill.setVisibility(View.GONE);
+            return;
+        }
+        if(trafficTotal<=0) {
+            trafficPercent.setText("—");
+            trafficSummary.setText(isSubscriptionExpired()
+                ? "Подписка истекла · данные о лимите недоступны"
+                : "Лимит трафика пока недоступен от сервера");
+            trafficProgressFill.setVisibility(View.GONE);
+            return;
+        }
         int percent=(int)Math.min(100,Math.round(used*100.0/trafficTotal));
         trafficPercent.setText(percent+"%");
         trafficSummary.setText(formatBytes(used)+" из "+formatBytes(trafficTotal)+" · осталось "+formatBytes(Math.max(0,trafficTotal-used)));
@@ -1253,6 +1270,11 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean isUnlimitedVip() {
+        String announce=subscriptionAnnounce==null?"":subscriptionAnnounce.toLowerCase(java.util.Locale.ROOT);
+        return announce.contains("vip-доступ активен") || announce.contains("vip access active");
+    }
+
     private String greetingText() {
         if(!subscriptionAnnounce.isEmpty()) return subscriptionAnnounce;
         if(!subscriptionTitle.isEmpty()) return "Добро пожаловать, "+subscriptionTitle;
@@ -1284,7 +1306,11 @@ public class MainActivity extends Activity {
         // stops sending it (for example after VIP is disabled).
         subscriptionAnnounce=announce;
         String userInfo=conn.getHeaderField("subscription-userinfo");
-        // Every successful response replaces the previous expiry; never keep a stale date.
+        // Every successful response replaces the previous metadata. Reset counters first
+        // so a missing total field cannot leave an old 10 GB quota in the UI.
+        trafficUpload=-1;
+        trafficDownload=-1;
+        trafficTotal=-1;
         subscriptionExpire=-1;
         if(userInfo!=null && !userInfo.trim().isEmpty()) {
             boolean hasExpire=false;
