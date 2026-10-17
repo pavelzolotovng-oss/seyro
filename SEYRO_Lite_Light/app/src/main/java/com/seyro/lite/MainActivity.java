@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
     private java.util.ArrayList<ProfileOption> autoFallbackProfiles=new java.util.ArrayList<>();
     private int autoFallbackIndex=0;
     private static final String[] AUTO_TRANSPORT_PRIORITY = {"xhttp", "tcp", "grpc"};
-    private static final int AUTO_MAX_ATTEMPTS = 3;
+    private static final int AUTO_MAX_ATTEMPTS = 4;
     private boolean handlingAutoFallback=false;
     private static class ProfileOption {
         final String label, transport, config;

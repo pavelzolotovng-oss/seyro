@@ -26,6 +26,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import hev.htproxy.TProxyService;
 import android.util.Log;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import libv2ray.CoreCallbackHandler;
 import libv2ray.CoreController;
 import libv2ray.Libv2ray;
