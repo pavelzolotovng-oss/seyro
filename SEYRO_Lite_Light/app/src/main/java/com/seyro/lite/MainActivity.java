@@ -98,7 +98,7 @@ public class MainActivity extends Activity {
 
         ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false); scroll.setClipChildren(false);
         scroll.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xffeaf4ff,0xfff8fbff,0xffe6f0ff}));
-        LinearLayout root=column(); root.setClipChildren(false); root.setClipToPadding(false); padding(root,dp(18),dp(38),dp(18),dp(28)); scroll.addView(root);
+        LinearLayout root=column(); root.setClipChildren(false); root.setClipToPadding(false); padding(root,dp(18),dp(38),dp(18),dp(28)); root.setPadding(root.getPaddingLeft(),root.getPaddingTop()+Math.round(getResources().getDisplayMetrics().heightPixels*0.02f),root.getPaddingRight(),root.getPaddingBottom()); scroll.addView(root);
 
         LinearLayout header=new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         TextView mark=text("S",27,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(0xff087cff,dp(14),0));
