@@ -1401,12 +1401,23 @@ public class MainActivity extends Activity {
         TextView details=text("Обновление установится поверх приложения и сохранит ваши настройки.",13,muted,false);
         details.setGravity(Gravity.CENTER);
         add(box,details,dp(12));
-        if(!notes.isEmpty()) {
-            TextView releaseNotes=text(notes,12,muted,false);
-            releaseNotes.setMaxLines(4);
-            releaseNotes.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            add(box,releaseNotes,dp(8));
-        }
+        TextView changesHeading=text("Что нового",13,ink,true);
+        changesHeading.setGravity(Gravity.START);
+        add(box,changesHeading,dp(14));
+        String visibleNotes=notes==null?"":notes.trim();
+        if(visibleNotes.isEmpty()) visibleNotes="Список изменений для этой сборки пока не опубликован.";
+        TextView releaseNotes=text(visibleNotes,12,muted,false);
+        releaseNotes.setGravity(Gravity.START);
+        releaseNotes.setLineSpacing(dp(2),1.0f);
+        padding(releaseNotes,dp(12),dp(10),dp(12),dp(10));
+        releaseNotes.setBackground(shape(0xfff3f7fd,dp(14),0xffe1eaf7));
+        ScrollView notesScroll=new ScrollView(this);
+        notesScroll.setFillViewport(false);
+        notesScroll.setVerticalScrollBarEnabled(true);
+        notesScroll.addView(releaseNotes,new ScrollView.LayoutParams(-1,-2));
+        LinearLayout.LayoutParams notesP=new LinearLayout.LayoutParams(-1,dp(132));
+        notesP.topMargin=dp(7);
+        box.addView(notesScroll,notesP);
         LinearLayout actions=new LinearLayout(this);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams actionsP=new LinearLayout.LayoutParams(-1,-2);
