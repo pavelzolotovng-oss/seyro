@@ -116,9 +116,22 @@ public class MainActivity extends Activity {
         root.addView(header);
 
         add(root,text("ВАШ ЛИЧНЫЙ VPN",10,blue,true),28);
-        userGreeting=text(greetingText(),25,ink,true); userGreeting.setLineSpacing(0f,1.02f); add(root,userGreeting,6);
+        userGreeting=text(greetingText(),25,ink,true);
+        userGreeting.setLineSpacing(0f,1.02f);
+        userGreeting.setGravity(Gravity.START);
+        add(root,userGreeting,6);
         subscriptionExpiryText=text("Подписка активна до: проверяем…",13,green,true);
+        subscriptionExpiryText.setGravity(Gravity.START);
         add(root,subscriptionExpiryText,dp(7));
+        // Keep the greeting left-aligned while it fits on one line. If a long
+        // username makes it wrap, center both the greeting and VIP/expiry line.
+        userGreeting.addOnLayoutChangeListener((v,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom) -> {
+            boolean multiline=userGreeting.getLineCount()>1;
+            int gravity=multiline?Gravity.CENTER:Gravity.START;
+            if(userGreeting.getGravity()!=gravity) userGreeting.setGravity(gravity);
+            if(subscriptionExpiryText!=null && subscriptionExpiryText.getGravity()!=gravity)
+                subscriptionExpiryText.setGravity(gravity);
+        });
         LinearLayout hero=column(); hero.setClipChildren(false); hero.setClipToPadding(false); padding(hero,dp(20),dp(22),dp(20),dp(20));
         GradientDrawable heroGradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
             new int[]{0xffffffff,0xfff3faff,0xffeaf7ff});
