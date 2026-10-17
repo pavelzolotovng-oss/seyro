@@ -1278,13 +1278,18 @@ public class MainActivity extends Activity {
 
     private boolean isUnlimitedVip() {
         String announce=subscriptionAnnounce==null?"":subscriptionAnnounce.toLowerCase(java.util.Locale.ROOT);
-        return announce.contains("vip-доступ активен") || announce.contains("vip access active");
+        // The subscription endpoint uses total=0 to indicate an unlimited traffic quota.
+        // The announce header may contain only a greeting, not the VIP status.
+        return trafficTotal==0 || announce.contains("vip-доступ активен") || announce.contains("vip access active");
     }
 
     private String greetingText() {
-        if(!subscriptionAnnounce.isEmpty()) return subscriptionAnnounce;
-        if(!subscriptionTitle.isEmpty()) return "Добро пожаловать, "+subscriptionTitle;
-        return "Ваш интернет.\nПод защитой.";
+        String greeting=!subscriptionAnnounce.isEmpty()?subscriptionAnnounce:
+            (!subscriptionTitle.isEmpty()?"Добро пожаловать, "+subscriptionTitle:"Ваш интернет.\nПод защитой.");
+        String announce=subscriptionAnnounce==null?"":subscriptionAnnounce.toLowerCase(java.util.Locale.ROOT);
+        if(trafficTotal==0 && !announce.contains("vip-доступ активен") && !announce.contains("vip access active"))
+            return greeting+" · VIP-доступ активен";
+        return greeting;
     }
 
     private String decodeMetadataHeader(String value) {
