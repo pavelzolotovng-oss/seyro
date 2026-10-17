@@ -1,6 +1,8 @@
 package com.seyro.lite;
 
 import android.app.Activity;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.Intent;
@@ -32,7 +34,8 @@ import android.widget.*;
 public class MainActivity extends Activity {
     private final int bg=0xfff3f7ff, white=0xffffffff, ink=0xff14233b, muted=0xff738198,
         line=0xffe2eaf6, blue=0xff2864e8, paleBlue=0xffeaf2ff, green=0xff118568;
-    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge,userGreeting,subscriptionExpiryText,trafficSummary,trafficPercent;
+    private TextView connect,status,hint,profileLinkValue,subscriptionState,protocolBadge,userGreeting,subscriptionExpiryText,trafficSummary,trafficPercent,qualityIndicator,shieldIcon;
+    private ObjectAnimator shieldPulse;
     private View trafficProgressFill;
     private LinearLayout trafficBarTrack;
     private volatile String subscriptionTitle="", subscriptionAnnounce="";
@@ -136,15 +139,18 @@ public class MainActivity extends Activity {
         hero.setBackground(heroGradient); hero.setElevation(dp(4));
         add(root,hero,dp(12));
         LinearLayout center=column(); center.setGravity(Gravity.CENTER);
-        TextView shield=text("S",36,white,true); shield.setGravity(Gravity.CENTER);
+        shieldIcon=text("S",36,white,true); shieldIcon.setGravity(Gravity.CENTER);
         GradientDrawable shieldGradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
             new int[]{0xff10baff,0xff087cff,0xff0755e8});
         shieldGradient.setShape(GradientDrawable.OVAL);
-        shield.setBackground(shieldGradient); shield.setElevation(dp(7));
+        shieldIcon.setBackground(shieldGradient); shieldIcon.setElevation(dp(7));
         LinearLayout.LayoutParams shieldP=new LinearLayout.LayoutParams(dp(94),dp(94)); shieldP.gravity=Gravity.CENTER;
-        center.addView(shield,shieldP);
+        center.addView(shieldIcon,shieldP);
         status=text("●  НЕ ПОДКЛЮЧЕНО",12,muted,true); status.setGravity(Gravity.CENTER);
         add(center,status,dp(12)); hero.addView(center);
+        qualityIndicator=pill("КАЧЕСТВО СОЕДИНЕНИЯ · ОЖИДАНИЕ ПРОВЕРКИ",muted,0xfff0f4fa);
+        LinearLayout.LayoutParams qualityP=new LinearLayout.LayoutParams(-2,-2);
+        qualityP.gravity=Gravity.CENTER; qualityP.topMargin=dp(6); center.addView(qualityIndicator,qualityP);
         protocolBadge=pill("ПРОТОКОЛ НЕ ВЫБРАН",blue,paleBlue);
         LinearLayout.LayoutParams protocolP=new LinearLayout.LayoutParams(-2,-2); protocolP.gravity=Gravity.CENTER; protocolP.topMargin=dp(7); center.addView(protocolBadge,protocolP);
         hint=text(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.",13,muted,false);
@@ -224,6 +230,8 @@ public class MainActivity extends Activity {
     private void renderVpnState() {
         if(status==null||connect==null||hint==null) return;
         String state=SeyroVpnService.vpnState;
+        updateConnectionQuality();
+        if("connected".equals(state)) startShieldPulse(); else stopShieldPulse();
         if("connected".equals(state)) {
             status.setText("●  ПОДКЛЮЧЕНО"); status.setTextColor(green);
             connect.setText("⏻    Отключиться"); connect.setEnabled(true);
@@ -245,6 +253,56 @@ public class MainActivity extends Activity {
         }
         updateProfileSubscriptionState();
         updateSubscriptionWidgets();
+    }
+
+    private void updateConnectionQuality() {
+        if(qualityIndicator==null) return;
+        long ms=SeyroVpnService.lastProbeDelayMs;
+        if(!"connected".equals(SeyroVpnService.vpnState)) {
+            qualityIndicator.setText("КАЧЕСТВО СОЕДИНЕНИЯ · НЕ ПОДКЛЮЧЕНО");
+            qualityIndicator.setTextColor(muted);
+            qualityIndicator.setBackground(shape(0xfff0f4fa,dp(40),0));
+        } else if(ms<0) {
+            qualityIndicator.setText("КАЧЕСТВО СОЕДИНЕНИЯ · ПРОВЕРЯЕМ…");
+            qualityIndicator.setTextColor(blue);
+            qualityIndicator.setBackground(shape(paleBlue,dp(40),0));
+        } else if(ms<100) {
+            qualityIndicator.setText("● ОТЛИЧНОЕ СОЕДИНЕНИЕ · "+ms+" мс");
+            qualityIndicator.setTextColor(green);
+            qualityIndicator.setBackground(shape(0xffe4f8f0,dp(40),0));
+        } else if(ms<200) {
+            qualityIndicator.setText("● ХОРОШЕЕ СОЕДИНЕНИЕ · "+ms+" мс");
+            qualityIndicator.setTextColor(0xff9a6a00);
+            qualityIndicator.setBackground(shape(0xfffff4d8,dp(40),0));
+        } else {
+            qualityIndicator.setText("● ВЫСОКАЯ ЗАДЕРЖКА · "+ms+" мс");
+            qualityIndicator.setTextColor(0xffbd4141);
+            qualityIndicator.setBackground(shape(0xffffe9e9,dp(40),0));
+        }
+    }
+
+    private void startShieldPulse() {
+        if(shieldIcon==null || (shieldPulse!=null && shieldPulse.isRunning())) return;
+        shieldPulse=ObjectAnimator.ofFloat(shieldIcon,"scaleX",1f,1.045f,1f);
+        shieldPulse.setDuration(1800);
+        shieldPulse.setRepeatCount(ValueAnimator.INFINITE);
+        shieldPulse.setRepeatMode(ValueAnimator.RESTART);
+        ObjectAnimator pulseY=ObjectAnimator.ofFloat(shieldIcon,"scaleY",1f,1.045f,1f);
+        pulseY.setDuration(1800);
+        pulseY.setRepeatCount(ValueAnimator.INFINITE);
+        pulseY.setRepeatMode(ValueAnimator.RESTART);
+        shieldPulse.start();
+        pulseY.start();
+        shieldIcon.setTag(pulseY);
+    }
+
+    private void stopShieldPulse() {
+        if(shieldPulse!=null) { shieldPulse.cancel(); shieldPulse=null; }
+        if(shieldIcon!=null && shieldIcon.getTag() instanceof ObjectAnimator) {
+            ((ObjectAnimator)shieldIcon.getTag()).cancel();
+            shieldIcon.setTag(null);
+            shieldIcon.setScaleX(1f); shieldIcon.setScaleY(1f);
+        }
     }
 
     private void updateProtocolBadge() {
