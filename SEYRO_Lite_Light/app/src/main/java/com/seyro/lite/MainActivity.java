@@ -1076,15 +1076,17 @@ public class MainActivity extends Activity {
             if(profileLink.isEmpty()) {
                 subscriptionExpiryText.setText("Добавьте ссылку, чтобы проверить подписку");
                 subscriptionExpiryText.setTextColor(muted);
+            } else if(subscriptionExpire>0 && isSubscriptionExpired()) {
+                subscriptionExpiryText.setText("Подписка истекла "+formattedSubscriptionExpiry());
+                subscriptionExpiryText.setTextColor(0xffc43d4b);
             } else if(subscriptionExpire>0) {
-                java.text.SimpleDateFormat fmt=new java.text.SimpleDateFormat("dd.MM.yyyy 'в' HH:mm",java.util.Locale.getDefault());
-                subscriptionExpiryText.setText("Подписка активна до "+fmt.format(new java.util.Date(subscriptionExpire*1000L)));
+                subscriptionExpiryText.setText("Подписка активна до "+formattedSubscriptionExpiry());
                 subscriptionExpiryText.setTextColor(green);
             } else if(subscriptionExpire==0) {
                 subscriptionExpiryText.setText("VIP-доступ · срок не ограничен");
                 subscriptionExpiryText.setTextColor(green);
             } else {
-                subscriptionExpiryText.setText("Проверяем срок подписки…");
+                subscriptionExpiryText.setText("Срок подписки не удалось проверить");
                 subscriptionExpiryText.setTextColor(muted);
             }
         }
@@ -1097,7 +1099,9 @@ public class MainActivity extends Activity {
         }
         if(trafficTotal<=0 || (trafficUpload<0 && trafficDownload<0)) {
             trafficPercent.setText("—");
-            trafficSummary.setText("Нет данных о лимите трафика от сервера");
+            trafficSummary.setText(isSubscriptionExpired()
+                ? "Подписка истекла · данные о трафике недоступны"
+                : "Лимит трафика пока недоступен от сервера");
             trafficProgressFill.setVisibility(View.GONE);
             return;
         }
@@ -1198,6 +1202,15 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private boolean isSubscriptionExpired() {
+        return subscriptionExpire>0 && subscriptionExpire*1000L<=System.currentTimeMillis();
+    }
+
+    private String formattedSubscriptionExpiry() {
+        return new java.text.SimpleDateFormat("dd.MM.yyyy 'в' HH:mm",java.util.Locale.getDefault())
+            .format(new java.util.Date(subscriptionExpire*1000L));
+    }
+
     private void updateProfileSubscriptionState() {
         if(subscriptionState==null) return;
         if(profileLink.isEmpty()) {
@@ -1207,7 +1220,7 @@ public class MainActivity extends Activity {
         if(subscriptionExpire>0) {
             String date=new java.text.SimpleDateFormat("dd.MM.yyyy",java.util.Locale.getDefault())
                 .format(new java.util.Date(subscriptionExpire*1000L));
-            subscriptionState.setText("Активна до "+date);
+            subscriptionState.setText(isSubscriptionExpired()?"Истекла "+date:"Активна до "+date);
         } else {
             subscriptionState.setText("Профиль добавлен");
         }
