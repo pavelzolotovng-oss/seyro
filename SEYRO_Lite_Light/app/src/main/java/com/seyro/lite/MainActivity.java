@@ -96,9 +96,9 @@ public class MainActivity extends Activity {
         w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
-        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false);
+        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false); scroll.setClipChildren(false);
         scroll.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xffeaf4ff,0xfff8fbff,0xffe6f0ff}));
-        LinearLayout root=column(); padding(root,dp(18),dp(38),dp(18),dp(28)); scroll.addView(root);
+        LinearLayout root=column(); root.setClipChildren(false); root.setClipToPadding(false); padding(root,dp(18),dp(38),dp(18),dp(28)); scroll.addView(root);
 
         LinearLayout header=new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         TextView mark=text("S",27,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(0xff087cff,dp(14),0));
@@ -119,13 +119,14 @@ public class MainActivity extends Activity {
         userGreeting=text(greetingText(),25,ink,true); userGreeting.setLineSpacing(0f,1.02f); add(root,userGreeting,6);
         subscriptionExpiryText=text("Подписка активна до: проверяем…",13,green,true);
         add(root,subscriptionExpiryText,dp(7));
-        LinearLayout hero=column(); padding(hero,dp(20),dp(22),dp(20),dp(20));
+        LinearLayout hero=column(); hero.setClipChildren(false); hero.setClipToPadding(false); padding(hero,dp(20),dp(22),dp(20),dp(20));
         GradientDrawable heroGradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
             new int[]{0xffffffff,0xfff3faff,0xffeaf7ff});
         heroGradient.setCornerRadius(dp(26)); heroGradient.setStroke(dp(1),0xffdcecff);
         hero.setBackground(heroGradient); hero.setElevation(dp(4));
         add(root,hero,dp(12));
         LinearLayout center=column(); center.setGravity(Gravity.CENTER);
+        center.setClipChildren(false); center.setClipToPadding(false);
         shieldIcon=text("S",36,white,true); shieldIcon.setGravity(Gravity.CENTER);
         GradientDrawable shieldGradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
             new int[]{0xff10baff,0xff087cff,0xff0755e8});
