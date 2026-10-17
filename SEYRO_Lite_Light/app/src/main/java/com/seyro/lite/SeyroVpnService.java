@@ -38,6 +38,7 @@ public class SeyroVpnService extends VpnService {
     public static final String ACTION_STOP = "com.seyro.lite.STOP_VPN";
     public static final String EXTRA_CONFIG = "xray_config";
     public static final String EXTRA_TRANSPORT = "transport";
+    public static final String EXTRA_BY_AUTO = "by_auto";
     private static final String TAG = "SEYRO-VPN";
     private static final String CHANNEL_ID = "seyro_vpn";
     private static volatile SeyroVpnService activeInstance;
@@ -48,6 +49,7 @@ public class SeyroVpnService extends VpnService {
     private boolean hasCapabilitiesSnapshot;
     private volatile boolean probeInProgress = false;
     private boolean autoTransportSavedThisSession = false;
+    private volatile boolean currentConnectionByAuto = false;
     private android.content.SharedPreferences prefs;
     private volatile String activeTransport = "";
     private static final long NETWORK_PROBE_DEBOUNCE_MS = 3000L;
@@ -113,10 +115,11 @@ public class SeyroVpnService extends VpnService {
         // Keep the adaptive interval when returning to the UI soon after a probe.
         // Reset the ladder only when the last probe is overdue by more than 2x its interval.
         boolean didReset = sinceLastSec >= 0 && sinceLastSec > 2L * currentIntervalSec;
-        Log.d("PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
-            "s; interval=" + currentIntervalSec + "s; reset=" + didReset);
-        DebugLog.d(this, "PROBE", "Внеочередной probe; sinceLast=" + (sinceLastSec < 0 ? "unknown" : sinceLastSec) +
-            "s; interval=" + currentIntervalSec + "s; reset=" + didReset + "; reason=" + reason);
+        String sinceLastStr = sinceLastSec < 0 ? "n/a" : (sinceLastSec + "s");
+        Log.d("PROBE", "Внеочередной probe; sinceLast=" + sinceLastStr +
+            "; interval=" + currentIntervalSec + "s; reset=" + didReset);
+        DebugLog.d(this, "PROBE", "Внеочередной probe; sinceLast=" + sinceLastStr +
+            "; interval=" + currentIntervalSec + "s; reset=" + didReset + "; reason=" + reason);
         if (didReset) {
             stepIndex = 0;
             successStreak = 0;
@@ -150,7 +153,7 @@ public class SeyroVpnService extends VpnService {
                     boolean sameNetwork = network.equals(lastCapabilitiesNetwork);
                     boolean validationChanged = !hasCapabilitiesSnapshot || !sameNetwork || validated != lastNetworkValidated;
 
-                    DebugLog.d(SeyroVpnService.this, "NETWORK",
+                    DebugLog.v(SeyroVpnService.this, "NETWORK",
                             "Возможности сети: " + network
                             + "; internet=" + capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                             + "; validated=" + validated
@@ -190,6 +193,7 @@ public class SeyroVpnService extends VpnService {
         if (prefs == null) prefs = getSharedPreferences("seyro_profile", MODE_PRIVATE);
         if(intent==null || ACTION_STOP.equals(intent.getAction())) {
             autoTransportSavedThisSession = false;
+            currentConnectionByAuto = false;
             setVpnState("disconnecting","");
             vpnExecutor.execute(() -> {
                 stopVpn();
@@ -211,6 +215,8 @@ public class SeyroVpnService extends VpnService {
             return START_NOT_STICKY;
         }
         if("connecting".equals(vpnState)||"connected".equals(vpnState)) return START_NOT_STICKY;
+        currentConnectionByAuto = intent.getBooleanExtra(EXTRA_BY_AUTO, false);
+        DebugLog.d(this, "AUTO", "onStartCommand: by_auto=" + currentConnectionByAuto);
         try {
             startInForeground();
         } catch(Exception e) {
@@ -457,18 +463,25 @@ public class SeyroVpnService extends VpnService {
                 logProbe("Проверка успешна: delay=" + delay + "ms; elapsed=" + elapsed +
                     "ms; streak=" + successStreak + "/3; step=" + stepIndex +
                     "; следующий интервал=" + nextProbeIntervalSeconds + "s");
-                if (!autoTransportSavedThisSession && prefs != null
+                if (currentConnectionByAuto
+                        && !autoTransportSavedThisSession
+                        && prefs != null
                         && "auto".equals(prefs.getString("selection_mode", "auto"))
                         && activeTransport != null && !activeTransport.isEmpty()) {
                     String prev = prefs.getString("auto_last_success_transport", "");
                     if (!activeTransport.equalsIgnoreCase(prev)) {
                         prefs.edit().putString("auto_last_success_transport", activeTransport).apply();
-                        DebugLog.i(this, "AUTO", "Запомнен успешный транспорт: " + activeTransport
-                            + " (было: " + (prev.isEmpty() ? "нет" : prev) + ")");
+                        DebugLog.i(this, "AUTO",
+                            "Запомнен успешный транспорт: " + activeTransport + " (было: "
+                            + (prev.isEmpty() ? "нет" : prev) + ")");
                     } else {
-                        DebugLog.d(this, "AUTO", "Транспорт " + activeTransport + " уже сохранён, без изменений");
+                        DebugLog.d(this, "AUTO",
+                            "Транспорт " + activeTransport + " уже сохранён, без изменений");
                     }
                     autoTransportSavedThisSession = true;
+                } else if (!currentConnectionByAuto) {
+                    DebugLog.v(this, "AUTO",
+                        "Пропуск сохранения: текущее подключение — manual");
                 }
                 Intent probeUpdate = new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName());
                 sendBroadcast(probeUpdate);

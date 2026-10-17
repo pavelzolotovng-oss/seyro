@@ -729,24 +729,32 @@ public class MainActivity extends Activity {
     }
 
     private void changeSelectionMode(String next) {
-        String old=prefs.getString("selection_mode","auto");
-        boolean changed=!next.equals(old);
-        prefs.edit().putString("selection_mode",next).apply();
-        if ("auto".equals(next)) {
-            // Do not let an in-memory manual selection bypass auto-selection.
-            selectedConfig="";
-            autoFallbackProfiles.clear();
-            autoFallbackIndex=0;
-        } else {
-            autoFallbackProfiles.clear();
-            autoFallbackIndex=0;
-        }
+        String old = prefs.getString("selection_mode", "auto");
+        boolean changed = !next.equals(old);
+        prefs.edit().putString("selection_mode", next).apply();
         updateProtocolBadge();
-        // The checked card already confirms the mode; avoid stacking transient messages.
-        // Update the open settings card in place to avoid the dismiss/reopen flicker.
-        if(settingsDialog!=null && settingsDialog.isShowing()) {
-            View root=settingsDialog.findViewById(android.R.id.content);
-            updateSettingsModeViews(root,next);
+
+        if (changed) {
+            activeTransport = "";
+            selectedConfig = "";
+            prefs.edit().remove("selected_transport").apply();
+            autoFallbackProfiles.clear();
+            autoFallbackIndex = 0;
+            DebugLog.i(this, "PROFILE",
+                "Смена режима: " + old + " → " + next + "; activeTransport сброшен");
+        }
+
+        if (changed && "connected".equals(SeyroVpnService.vpnState)) {
+            DebugLog.i(this, "VPN", "Переподключение для применения режима " + next);
+            Intent stop = new Intent(this, SeyroVpnService.class);
+            stop.setAction(SeyroVpnService.ACTION_STOP);
+            startService(stop);
+            connect.postDelayed(() -> onConnect(), 1000);
+        }
+
+        if (settingsDialog != null && settingsDialog.isShowing()) {
+            View root = settingsDialog.findViewById(android.R.id.content);
+            updateSettingsModeViews(root, next);
         }
     }
 
@@ -2103,6 +2111,8 @@ public class MainActivity extends Activity {
         intent.setAction(SeyroVpnService.ACTION_START);
         intent.putExtra(SeyroVpnService.EXTRA_CONFIG,selectedConfig);
         intent.putExtra(SeyroVpnService.EXTRA_TRANSPORT,activeTransport);
+        boolean isAuto = "auto".equals(prefs.getString("selection_mode", "auto"));
+        intent.putExtra(SeyroVpnService.EXTRA_BY_AUTO, isAuto);
         if(Build.VERSION.SDK_INT>=26) startForegroundService(intent); else startService(intent);
     }
 }
