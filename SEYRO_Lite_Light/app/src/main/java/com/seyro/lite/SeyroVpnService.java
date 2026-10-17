@@ -35,6 +35,7 @@ public class SeyroVpnService extends VpnService {
     public static final String ACTION_START = "com.seyro.lite.START_VPN";
     public static final String ACTION_STOP = "com.seyro.lite.STOP_VPN";
     public static final String EXTRA_CONFIG = "xray_config";
+    public static final String EXTRA_TRANSPORT = "transport";
     private static final String TAG = "SEYRO-VPN";
     private static final String CHANNEL_ID = "seyro_vpn";
     private static volatile SeyroVpnService activeInstance;
@@ -44,6 +45,9 @@ public class SeyroVpnService extends VpnService {
     private boolean lastNetworkValidated;
     private boolean hasCapabilitiesSnapshot;
     private volatile boolean probeInProgress = false;
+    private boolean autoTransportSavedThisSession = false;
+    private android.content.SharedPreferences prefs;
+    private volatile String activeTransport = "";
     private static final long NETWORK_PROBE_DEBOUNCE_MS = 3000L;
     private long lastNetworkProbeAt = 0L;
     private static final int NOTIFICATION_ID = 1;
@@ -181,7 +185,9 @@ public class SeyroVpnService extends VpnService {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         DebugLog.i(this,"SERVICE","onStartCommand action="+(intent==null?"null":intent.getAction()));
+        if (prefs == null) prefs = getSharedPreferences("seyro_profile", MODE_PRIVATE);
         if(intent==null || ACTION_STOP.equals(intent.getAction())) {
+            autoTransportSavedThisSession = false;
             setVpnState("disconnecting","");
             vpnExecutor.execute(() -> {
                 stopVpn();
@@ -192,7 +198,11 @@ public class SeyroVpnService extends VpnService {
             return START_NOT_STICKY;
         }
         if(!ACTION_START.equals(intent.getAction())) return START_NOT_STICKY;
+        autoTransportSavedThisSession = false;
         String config=intent.getStringExtra(EXTRA_CONFIG);
+        activeTransport = intent.getStringExtra(EXTRA_TRANSPORT);
+        if (activeTransport == null || activeTransport.trim().isEmpty())
+            activeTransport = detectTransport(config);
         if(config==null || config.trim().isEmpty()) {
             setVpnState("error","Профиль пустой. Добавьте ссылку и попробуйте снова.");
             stopSelf(startId);
@@ -390,6 +400,24 @@ public class SeyroVpnService extends VpnService {
         if(out.length()>0) DebugLog.d(this,"TRAFFIC","за 30с: "+out);
     }
 
+    private String detectTransport(String config) {
+        if (config == null || config.trim().isEmpty()) return "";
+        try {
+            JSONObject root = new JSONObject(config);
+            JSONArray outbounds = root.optJSONArray("outbounds");
+            if (outbounds != null) for (int i=0; i<outbounds.length(); i++) {
+                JSONObject outbound = outbounds.optJSONObject(i);
+                if (outbound != null && "vless".equalsIgnoreCase(outbound.optString("protocol"))) {
+                    JSONObject stream = outbound.optJSONObject("streamSettings");
+                    if (stream != null) return stream.optString("network", "tcp");
+                }
+            }
+        } catch (Exception e) {
+            DebugLog.w(this, "AUTO", "Не удалось определить транспорт из конфигурации");
+        }
+        return "";
+    }
+
     private void logProbe(String message) {
         Log.d("PROBE", message);
         DebugLog.d(this, "PROBE", message);
@@ -427,6 +455,19 @@ public class SeyroVpnService extends VpnService {
                 logProbe("Проверка успешна: delay=" + delay + "ms; elapsed=" + elapsed +
                     "ms; streak=" + successStreak + "/3; step=" + stepIndex +
                     "; следующий интервал=" + nextProbeIntervalSeconds + "s");
+                if (!autoTransportSavedThisSession && prefs != null
+                        && "auto".equals(prefs.getString("selection_mode", "auto"))
+                        && activeTransport != null && !activeTransport.isEmpty()) {
+                    String prev = prefs.getString("auto_last_success_transport", "");
+                    if (!activeTransport.equalsIgnoreCase(prev)) {
+                        prefs.edit().putString("auto_last_success_transport", activeTransport).apply();
+                        DebugLog.i(this, "AUTO", "Запомнен успешный транспорт: " + activeTransport
+                            + " (было: " + (prev.isEmpty() ? "нет" : prev) + ")");
+                    } else {
+                        DebugLog.d(this, "AUTO", "Транспорт " + activeTransport + " уже сохранён, без изменений");
+                    }
+                    autoTransportSavedThisSession = true;
+                }
                 Intent probeUpdate = new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName());
                 sendBroadcast(probeUpdate);
                 probeInProgress = false;

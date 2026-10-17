@@ -50,6 +50,8 @@ public class MainActivity extends Activity {
     // Auto mode keeps the remaining subscription profiles as startup-failure fallbacks.
     private java.util.ArrayList<ProfileOption> autoFallbackProfiles=new java.util.ArrayList<>();
     private int autoFallbackIndex=0;
+    private static final String[] AUTO_TRANSPORT_PRIORITY = {"xhttp", "tcp", "grpc"};
+    private static final int AUTO_MAX_ATTEMPTS = 3;
     private boolean handlingAutoFallback=false;
     private static class ProfileOption {
         final String label, transport, config;
@@ -1779,44 +1781,65 @@ public class MainActivity extends Activity {
                         .setItems(labels,(d,which)->selectProfile(result.get(which)))
                         .setNegativeButton("Отмена",null).show();
                 } else {
-                    // Reuse the last transport that reached the connected state, then try
-                    // the remaining subscription entries in their original order.
-                    String lastGood=prefs.getString("last_successful_transport","");
-                    java.util.ArrayList<ProfileOption> ordered=new java.util.ArrayList<>();
-                    if(!lastGood.isEmpty()) {
-                        for(ProfileOption option:result)
-                            if(lastGood.equalsIgnoreCase(option.transport)) ordered.add(option);
-                    }
-                    for(ProfileOption option:result) if(!ordered.contains(option)) ordered.add(option);
+                    java.util.List<ProfileOption> ordered=buildAutoAttemptOrder(result);
                     autoFallbackProfiles.clear();
                     autoFallbackProfiles.addAll(ordered);
                     autoFallbackIndex=0;
+                    StringBuilder queueLog=new StringBuilder();
+                    for(ProfileOption p:ordered) {
+                        if(queueLog.length()>0) queueLog.append(", ");
+                        queueLog.append(p.transport);
+                    }
+                    DebugLog.i(this,"PROFILE","Автовыбор: очередь = ["+queueLog+"]");
                     ProfileOption chosen=ordered.get(0);
-                    DebugLog.i(this,"PROFILE","Автовыбор: кандидат 1/"+ordered.size()+": "+chosen.label
-                        +"; transport="+chosen.transport+"; прошлый успешный="+(lastGood.isEmpty()?"нет":lastGood));
+                    DebugLog.i(this,"PROFILE","Автовыбор: попытка 1/"+Math.min(AUTO_MAX_ATTEMPTS,ordered.size())
+                        +" — "+chosen.transport+" ("+chosen.label+")");
                     selectProfile(chosen);
                 }
             });
         }).start();
     }
 
+    private java.util.List<ProfileOption> buildAutoAttemptOrder(
+            java.util.ArrayList<ProfileOption> profiles) {
+        java.util.LinkedHashSet<String> order = new java.util.LinkedHashSet<>();
+        String saved = prefs.getString("auto_last_success_transport", "");
+        if (!saved.isEmpty()) order.add(saved.toLowerCase(java.util.Locale.ROOT));
+        for (String transport : AUTO_TRANSPORT_PRIORITY) order.add(transport);
+        for (ProfileOption option : profiles) {
+            if (option.transport != null && !option.transport.isEmpty())
+                order.add(option.transport.toLowerCase(java.util.Locale.ROOT));
+        }
+        java.util.List<ProfileOption> result = new java.util.ArrayList<>();
+        for (String transport : order) {
+            for (ProfileOption option : profiles) {
+                if (option.transport.equalsIgnoreCase(transport)) {
+                    result.add(option);
+                    break;
+                }
+            }
+        }
+        for (ProfileOption option : profiles) if (!result.contains(option)) result.add(option);
+        return result;
+    }
+
     private void handleAutoSelectionState() {
         if(!"auto".equals(prefs.getString("selection_mode","auto"))) return;
         if("connected".equals(SeyroVpnService.vpnState)) {
-            if(!activeTransport.isEmpty()) {
-                prefs.edit().putString("last_successful_transport",activeTransport).apply();
-                DebugLog.i(this,"AUTO","Запомнен успешно запущенный транспорт: "+activeTransport);
-            }
+            // Connected confirms Xray/TUN startup only; transport is saved after a successful probe.
             autoFallbackProfiles.clear();
             autoFallbackIndex=0;
             handlingAutoFallback=false;
             return;
         }
         if(!"error".equals(SeyroVpnService.vpnState) || handlingAutoFallback
-                || autoFallbackIndex+1>=autoFallbackProfiles.size()) return;
+                || autoFallbackIndex+1>=autoFallbackProfiles.size()
+                || autoFallbackIndex+1>=AUTO_MAX_ATTEMPTS) return;
         handlingAutoFallback=true;
         autoFallbackIndex++;
         ProfileOption next=autoFallbackProfiles.get(autoFallbackIndex);
+        DebugLog.i(this,"PROFILE","Автовыбор: попытка "+(autoFallbackIndex+1)+"/"
+            +Math.min(AUTO_MAX_ATTEMPTS,autoFallbackProfiles.size())+" — "+next.transport);
         selectedConfig=next.config;
         activeTransport=next.transport;
         prefs.edit().putString("selected_transport",activeTransport).apply();
@@ -2079,6 +2102,7 @@ public class MainActivity extends Activity {
         Intent intent=new Intent(this,SeyroVpnService.class);
         intent.setAction(SeyroVpnService.ACTION_START);
         intent.putExtra(SeyroVpnService.EXTRA_CONFIG,selectedConfig);
+        intent.putExtra(SeyroVpnService.EXTRA_TRANSPORT,activeTransport);
         if(Build.VERSION.SDK_INT>=26) startForegroundService(intent); else startService(intent);
     }
 }
