@@ -50,6 +50,7 @@ public class SeyroVpnService extends VpnService {
     public static final String ACTION_STATE_CHANGED = "com.seyro.lite.VPN_STATE_CHANGED";
     public static volatile String vpnState = "disconnected";
     public static volatile String lastError = "";
+    public static volatile long lastProbeDelayMs = -1L;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService vpnExecutor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService diagnosticsExecutor = Executors.newSingleThreadScheduledExecutor();
@@ -415,6 +416,7 @@ public class SeyroVpnService extends VpnService {
                 "s; streak=" + successStreak + "; step=" + stepIndex);
             try {
                 long delay = current.measureDelay("https://www.google.com/generate_204");
+                lastProbeDelayMs = delay;
                 long elapsed = System.currentTimeMillis() - started;
                 successStreak++;
                 if (successStreak >= 3) {
@@ -425,9 +427,14 @@ public class SeyroVpnService extends VpnService {
                 logProbe("Проверка успешна: delay=" + delay + "ms; elapsed=" + elapsed +
                     "ms; streak=" + successStreak + "/3; step=" + stepIndex +
                     "; следующий интервал=" + nextProbeIntervalSeconds + "s");
+                Intent probeUpdate = new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName());
+                sendBroadcast(probeUpdate);
                 probeInProgress = false;
                 scheduleNextProbe(nextProbeIntervalSeconds);
             } catch (Exception e) {
+                lastProbeDelayMs = -1L;
+                Intent probeUpdate = new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName());
+                sendBroadcast(probeUpdate);
                 probeInProgress = false;
                 successStreak = 0;
                 stepIndex = 0;
