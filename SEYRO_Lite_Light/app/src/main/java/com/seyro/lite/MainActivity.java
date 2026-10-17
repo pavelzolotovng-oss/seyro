@@ -155,7 +155,8 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams protocolP=new LinearLayout.LayoutParams(-2,-2); protocolP.gravity=Gravity.CENTER; protocolP.topMargin=dp(7); center.addView(protocolBadge,protocolP);
         hint=text(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.",13,muted,false);
         hint.setGravity(Gravity.CENTER); add(hero,hint,8);
-        connect=text("⏻    Подключить",17,white,true); connect.setGravity(Gravity.CENTER);
+        connect=text("Подключить",17,white,true); connect.setGravity(Gravity.CENTER);
+        connect.setCompoundDrawablePadding(dp(10));
         padding(connect,dp(16),dp(15),dp(16),dp(15));
         GradientDrawable connectGradient=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
             new int[]{0xff167cff,0xff0860f2,0xff0757e8});
@@ -234,7 +235,7 @@ public class MainActivity extends Activity {
         if("connected".equals(state)) startShieldPulse(); else stopShieldPulse();
         if("connected".equals(state)) {
             status.setText("●  ПОДКЛЮЧЕНО"); status.setTextColor(green);
-            connect.setText("⏻    Отключиться"); connect.setEnabled(true);
+            connect.setText("Отключиться"); connect.setEnabled(true);
             hint.setText("Защищённое соединение активно.");
             updateProtocolBadge();
         } else if("connecting".equals(state)||"disconnecting".equals(state)) {
@@ -247,12 +248,35 @@ public class MainActivity extends Activity {
             hint.setText(SeyroVpnService.lastError.isEmpty()?"Проверьте профиль и попробуйте снова.":SeyroVpnService.lastError);
         } else {
             status.setText("●  НЕ ПОДКЛЮЧЕНО"); status.setTextColor(muted);
-            connect.setText("⏻    Подключить"); connect.setEnabled(true);
+            connect.setText("Подключить"); connect.setEnabled(true);
             hint.setText(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.");
             updateProtocolBadge();
         }
+        if("connecting".equals(state)||"disconnecting".equals(state)) connect.setCompoundDrawables(null,null,null,null);
+        else connect.setCompoundDrawables(new PowerGlyph(white,dp(19)),null,null,null);
         updateProfileSubscriptionState();
         updateSubscriptionWidgets();
+    }
+
+    private final class PowerGlyph extends android.graphics.drawable.Drawable {
+        private final android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final int color;
+        private final float size;
+        PowerGlyph(int color,int size) { this.color=color; this.size=size; setBounds(0,0,size,size); }
+        @Override public void draw(android.graphics.Canvas canvas) {
+            android.graphics.Rect b=getBounds();
+            float cx=b.exactCenterX(), cy=b.exactCenterY();
+            float radius=size*0.32f;
+            paint.setColor(color); paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(size*0.105f); paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+            paint.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+            android.graphics.RectF arc=new android.graphics.RectF(cx-radius,cy-radius,cx+radius,cy+radius);
+            canvas.drawArc(arc,135,270,false,paint);
+            canvas.drawLine(cx,cy-radius-size*0.10f,cx,cy+radius*0.12f,paint);
+        }
+        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
+        @Override public void setColorFilter(android.graphics.ColorFilter filter) { paint.setColorFilter(filter); }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
     }
 
     private void updateConnectionQuality() {
@@ -283,12 +307,12 @@ public class MainActivity extends Activity {
 
     private void startShieldPulse() {
         if(shieldIcon==null || (shieldPulse!=null && shieldPulse.isRunning())) return;
-        shieldPulse=ObjectAnimator.ofFloat(shieldIcon,"scaleX",1f,1.045f,1f);
-        shieldPulse.setDuration(1800);
+        shieldPulse=ObjectAnimator.ofFloat(shieldIcon,"scaleX",1f,1.06f,1f);
+        shieldPulse.setDuration(1600);
         shieldPulse.setRepeatCount(ValueAnimator.INFINITE);
         shieldPulse.setRepeatMode(ValueAnimator.RESTART);
-        ObjectAnimator pulseY=ObjectAnimator.ofFloat(shieldIcon,"scaleY",1f,1.045f,1f);
-        pulseY.setDuration(1800);
+        ObjectAnimator pulseY=ObjectAnimator.ofFloat(shieldIcon,"scaleY",1f,1.06f,1f);
+        pulseY.setDuration(1600);
         pulseY.setRepeatCount(ValueAnimator.INFINITE);
         pulseY.setRepeatMode(ValueAnimator.RESTART);
         shieldPulse.start();
