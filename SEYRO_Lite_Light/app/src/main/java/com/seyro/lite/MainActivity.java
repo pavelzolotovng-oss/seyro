@@ -589,14 +589,17 @@ public class MainActivity extends Activity {
         section.setVisibility(manual?View.VISIBLE:View.GONE);
         choose.setVisibility(manual?View.VISIBLE:View.GONE);
 
-        LinearLayout refresh=rowCard("Обновить подписку",
-            "Обновить сведения о сроке и трафике","↻",false);
-        add(options,refresh,dp(8));
-        refresh.setOnClickListener(v->{
-            refreshSubscriptionMetadataInBackground(true);
-            showSimpleStyledNotice("Обновление подписки",
-                "Запрошено обновление данных подписки.");
-        });
+        // Не показываем обновление подписки, пока пользователь не добавил ссылку.
+        if(!profileLink.isEmpty()) {
+            LinearLayout refresh=rowCard("Обновить подписку",
+                "Обновить сведения о сроке и трафике","↻",false);
+            add(options,refresh,dp(8));
+            refresh.setOnClickListener(v->{
+                refreshSubscriptionMetadataInBackground(true);
+                showSimpleStyledNotice("Обновление подписки",
+                    "Запрошено обновление данных подписки.");
+            });
+        }
 
         LinearLayout appUpdate=rowCard("Обновить приложение",
             "Проверить наличие новой версии SEYRO Lite","⬇",false);
