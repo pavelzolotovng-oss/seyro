@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
         root.addView(header);
 
         add(root,text("ВАШ ЛИЧНЫЙ VPN",10,blue,true),28);
-        userGreeting=text(greetingText(),25,ink,true);
+        userGreeting=text((profileLink.isEmpty()?"Добро пожаловать!":greetingText()),25,ink,true);
         userGreeting.setLineSpacing(0f,1.02f);
         userGreeting.setGravity(Gravity.START);
         add(root,userGreeting,6);
@@ -155,9 +155,9 @@ public class MainActivity extends Activity {
         qualityP.gravity=Gravity.CENTER; qualityP.topMargin=dp(6); center.addView(qualityIndicator,qualityP);
         protocolBadge=pill("ПРОТОКОЛ НЕ ВЫБРАН",blue,paleBlue);
         LinearLayout.LayoutParams protocolP=new LinearLayout.LayoutParams(-2,-2); protocolP.gravity=Gravity.CENTER; protocolP.topMargin=dp(7); center.addView(protocolBadge,protocolP);
-        hint=text(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.",13,muted,false);
+        hint=text(profileLink.isEmpty()?"Добавьте ссылку подписки, чтобы настроить защищённое подключение.":"Профиль готов к подключению.",13,muted,false);
         hint.setGravity(Gravity.CENTER); add(hero,hint,8);
-        connect=text("Подключить",17,white,true); connect.setGravity(Gravity.CENTER);
+        connect=text(profileLink.isEmpty()?"Добавить ссылку подписки":"Подключить",17,white,true); connect.setGravity(Gravity.CENTER);
         connect.setCompoundDrawablePadding(dp(10));
         padding(connect,dp(16),dp(15),dp(16),dp(15));
         GradientDrawable connectGradient=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
@@ -251,7 +251,8 @@ public class MainActivity extends Activity {
         } else {
             status.setText("●  НЕ ПОДКЛЮЧЕНО"); status.setTextColor(muted);
             connect.setText("Подключить"); connect.setEnabled(true);
-            hint.setText(profileLink.isEmpty()?"Добавьте ссылку профиля, чтобы подключиться.":"Профиль готов к подключению.");
+            hint.setText(profileLink.isEmpty()?"Вставьте ссылку подписки из личного кабинета SEYRO.":"Профиль готов к подключению.");
+            connect.setText(profileLink.isEmpty()?"Добавить ссылку подписки":"Подключить");
             updateProtocolBadge();
         }
         if("connecting".equals(state)||"disconnecting".equals(state)) connect.setCompoundDrawables(null,null,null,null);
