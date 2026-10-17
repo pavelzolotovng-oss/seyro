@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     private View trafficProgressFill;
     private LinearLayout trafficBarTrack;
     private volatile String subscriptionTitle="", subscriptionAnnounce="";
+    private volatile boolean subscriptionInactive=false;
     private volatile long trafficUpload=-1, trafficDownload=-1, trafficTotal=-1, subscriptionExpire=-1;
     private String activeTransport="";
     private SharedPreferences prefs;
@@ -1073,7 +1074,10 @@ public class MainActivity extends Activity {
 
     private void updateSubscriptionWidgets() {
         if(subscriptionExpiryText!=null) {
-            if(profileLink.isEmpty()) {
+            if(subscriptionInactive) {
+                subscriptionExpiryText.setText("Подписка неактивна · доступ запрещён");
+                subscriptionExpiryText.setTextColor(0xffc43d4b);
+            } else if(profileLink.isEmpty()) {
                 subscriptionExpiryText.setText("Добавьте ссылку, чтобы проверить подписку");
                 subscriptionExpiryText.setTextColor(muted);
             } else if(subscriptionExpire>0 && isSubscriptionExpired()) {
@@ -1094,6 +1098,12 @@ public class MainActivity extends Activity {
         if(profileLink.isEmpty()) {
             trafficPercent.setText("—");
             trafficSummary.setText("Добавьте ссылку подписки");
+            trafficProgressFill.setVisibility(View.GONE);
+            return;
+        }
+        if(subscriptionInactive) {
+            trafficPercent.setText("—");
+            trafficSummary.setText("Подписка неактивна · проверьте статус в личном кабинете");
             trafficProgressFill.setVisibility(View.GONE);
             return;
         }
@@ -1148,6 +1158,7 @@ public class MainActivity extends Activity {
     private void clearCachedSubscriptionMetadata() {
         subscriptionTitle="";
         subscriptionAnnounce="";
+        subscriptionInactive=false;
         trafficUpload=-1;
         trafficDownload=-1;
         trafficTotal=-1;
@@ -1165,6 +1176,7 @@ public class MainActivity extends Activity {
 
     private void loadCachedSubscriptionMetadata() {
         subscriptionTitle=prefs.getString("cached_subscription_title","");
+        subscriptionInactive=prefs.getBoolean("cached_subscription_inactive",false);
         subscriptionAnnounce=prefs.getString("cached_subscription_announce","");
         trafficUpload=prefs.getLong("cached_traffic_upload",-1);
         trafficDownload=prefs.getLong("cached_traffic_download",-1);
@@ -1217,6 +1229,8 @@ public class MainActivity extends Activity {
                         .putLong(PREF_SUBSCRIPTION_RETRY_AT,0L)
                         .putInt(PREF_SUBSCRIPTION_RETRY_ATTEMPT,0)
                         .apply();
+                    subscriptionInactive=false;
+                    prefs.edit().putBoolean("cached_subscription_inactive",false).apply();
                     readSubscriptionMetadata(conn);
                     runOnUiThread(() -> {
                         if(!link.equals(profileLink)) return;
@@ -1230,7 +1244,40 @@ public class MainActivity extends Activity {
                         runOnUiThread(() ->
                             Toast.makeText(MainActivity.this,"Данные подписки обновлены",Toast.LENGTH_SHORT).show());
                     }
-                } else if(code==403 || code==429) {
+                } else if(code==403) {
+                    String errorBody="";
+                    try(InputStream error=conn.getErrorStream()) {
+                        if(error!=null) {
+                            ByteArrayOutputStream out=new ByteArrayOutputStream();
+                            byte[] buf=new byte[1024]; int n;
+                            while((n=error.read(buf))!=-1 && out.size()<8192) out.write(buf,0,n);
+                            errorBody=new String(out.toByteArray(),StandardCharsets.UTF_8);
+                        }
+                    } catch(Exception ignored) {}
+                    subscriptionInactive=true;
+                    subscriptionTitle="";
+                    subscriptionAnnounce="";
+                    trafficUpload=-1; trafficDownload=-1; trafficTotal=-1; subscriptionExpire=-1;
+                    prefs.edit()
+                        .putBoolean("cached_subscription_inactive",true)
+                        .remove("cached_subscription_title")
+                        .remove("cached_subscription_announce")
+                        .remove("cached_traffic_upload")
+                        .remove("cached_traffic_download")
+                        .remove("cached_traffic_total")
+                        .remove("cached_subscription_expire")
+                        .putLong(PREF_SUBSCRIPTION_RETRY_AT,0L)
+                        .putInt(PREF_SUBSCRIPTION_RETRY_ATTEMPT,0)
+                        .apply();
+                    runOnUiThread(() -> {
+                        if(!link.equals(profileLink)) return;
+                        if(userGreeting!=null) userGreeting.setText("Подписка неактивна");
+                        updateSubscriptionWidgets();
+                        updateProfileSubscriptionState();
+                    });
+                    DebugLog.w(this,"SUBSCRIPTION","HTTP 403 — подписка неактивна; ответ сервера: "+
+                        errorBody.replaceAll("[\\r\\n]+"," ").trim());
+                } else if(code==429) {
                     int attempt=prefs.getInt(PREF_SUBSCRIPTION_RETRY_ATTEMPT,0);
                     int delayIndex=Math.min(attempt,SUBSCRIPTION_BACKOFF_MS.length-1);
                     long delay=SUBSCRIPTION_BACKOFF_MS[delayIndex];
@@ -1239,7 +1286,7 @@ public class MainActivity extends Activity {
                         .putInt(PREF_SUBSCRIPTION_RETRY_ATTEMPT,Math.min(attempt+1,SUBSCRIPTION_BACKOFF_MS.length-1))
                         .putLong(PREF_SUBSCRIPTION_RETRY_AT,nextRetry)
                         .apply();
-                    DebugLog.w(this,"SUBSCRIPTION","HTTP "+code+"; backoff "+
+                    DebugLog.w(this,"SUBSCRIPTION","HTTP 429; backoff "+
                         (delay/60000L)+" мин, следующая попытка не раньше "+nextRetry);
                 } else DebugLog.w(this,"SUBSCRIPTION","Обновление метаданных при запуске: HTTP "+code);
             } catch(Exception e) {
@@ -1265,6 +1312,10 @@ public class MainActivity extends Activity {
         if(subscriptionState==null) return;
         if(profileLink.isEmpty()) {
             subscriptionState.setText("Не настроена");
+            return;
+        }
+        if(subscriptionInactive) {
+            subscriptionState.setText("Неактивна / заблокирована");
             return;
         }
         if(subscriptionExpire>0) {
