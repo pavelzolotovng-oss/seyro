@@ -119,19 +119,6 @@ public class MainActivity extends Activity {
         userGreeting=text(greetingText(),25,ink,true); userGreeting.setLineSpacing(0f,1.02f); add(root,userGreeting,6);
         subscriptionExpiryText=text("Подписка активна до: проверяем…",13,green,true);
         add(root,subscriptionExpiryText,dp(7));
-        add(root,text("Безопасный доступ — в одно касание.",14,muted,false),8);
-
-        LinearLayout safety= new LinearLayout(this); safety.setGravity(Gravity.CENTER_VERTICAL);
-        padding(safety,dp(15),dp(10),dp(15),dp(10));
-        safety.setBackground(shape(0xfff8fcff,dp(18),0xffd9eaff));
-        TextView safetyIcon=text("✓",18,white,true); safetyIcon.setGravity(Gravity.CENTER);
-        safetyIcon.setBackground(shape(0xff18c982,dp(30),0));
-        safety.addView(safetyIcon,new LinearLayout.LayoutParams(dp(34),dp(34)));
-        TextView safetyText=text("Безопасный доступ — в одно касание.",14,0xff526b91,true);
-        LinearLayout.LayoutParams safetyTextP=new LinearLayout.LayoutParams(0,-2,1); safetyTextP.leftMargin=dp(12);
-        safety.addView(safetyText,safetyTextP);
-        add(root,safety,dp(18));
-
         LinearLayout hero=column(); padding(hero,dp(20),dp(22),dp(20),dp(20));
         GradientDrawable heroGradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
             new int[]{0xffffffff,0xfff3faff,0xffeaf7ff});
