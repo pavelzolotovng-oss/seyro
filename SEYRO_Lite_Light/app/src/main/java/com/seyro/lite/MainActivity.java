@@ -1165,9 +1165,9 @@ public class MainActivity extends Activity {
         long now=System.currentTimeMillis();
         if(link==null || link.trim().isEmpty()) return;
         long retryAt=prefs.getLong(PREF_SUBSCRIPTION_RETRY_AT,0L);
-        // Respect server throttling even for manual refreshes; repeated taps must not
-        // bypass a 403/429 backoff and trigger another rate-limit response.
-        if(now<retryAt) {
+        // Backoff applies only to automatic lifecycle refreshes. An explicit user
+        // request from Settings must run immediately, regardless of the automatic retry timer.
+        if(!force && now<retryAt) {
             long waitSeconds=Math.max(1L,(retryAt-now+999L)/1000L);
             DebugLog.d(this,"SUBSCRIPTION","Пропуск запроса (backoff): повтор через "+waitSeconds+" с");
             return;
