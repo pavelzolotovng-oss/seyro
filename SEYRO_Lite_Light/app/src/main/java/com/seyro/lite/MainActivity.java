@@ -1098,6 +1098,20 @@ public class MainActivity extends Activity {
             return;
         }
         boolean unlimitedVip=isUnlimitedVip();
+        if(unlimitedVip) {
+            // VIP is unlimited even if the subscription endpoint still sends a finite
+            // total (for example a default 10 GB quota). Never calculate a percentage
+            // or remaining traffic for an unlimited VIP account.
+            trafficPercent.setText("∞");
+            trafficProgressFill.setVisibility(View.GONE);
+            if(trafficUpload<0 && trafficDownload<0) {
+                trafficSummary.setText("Безлимитный трафик · данные об использованном объёме пока недоступны");
+            } else {
+                long used=Math.max(0,trafficUpload)+Math.max(0,trafficDownload);
+                trafficSummary.setText(formatBytes(used)+" использовано · безлимитный трафик");
+            }
+            return;
+        }
         if(trafficUpload<0 && trafficDownload<0) {
             trafficPercent.setText("—");
             trafficSummary.setText(isSubscriptionExpired()
@@ -1107,14 +1121,6 @@ public class MainActivity extends Activity {
             return;
         }
         long used=Math.max(0,trafficUpload)+Math.max(0,trafficDownload);
-        if(unlimitedVip && trafficTotal<=0) {
-            // The admin panel represents VIP traffic with an unlimited quota (∞).
-            // Do not reuse an old cached quota or invent a percentage for unlimited plans.
-            trafficPercent.setText("∞");
-            trafficSummary.setText(formatBytes(used)+" использовано · безлимитный трафик");
-            trafficProgressFill.setVisibility(View.GONE);
-            return;
-        }
         if(trafficTotal<=0) {
             trafficPercent.setText("—");
             trafficSummary.setText(isSubscriptionExpired()
