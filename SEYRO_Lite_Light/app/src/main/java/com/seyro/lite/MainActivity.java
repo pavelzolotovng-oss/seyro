@@ -47,6 +47,10 @@ public class MainActivity extends Activity {
     private boolean demoOn=false;
     private String selectedConfig="";
     private java.util.ArrayList<ProfileOption> availableProfiles=new java.util.ArrayList<>();
+    // Auto mode keeps the remaining subscription profiles as startup-failure fallbacks.
+    private java.util.ArrayList<ProfileOption> autoFallbackProfiles=new java.util.ArrayList<>();
+    private int autoFallbackIndex=0;
+    private boolean handlingAutoFallback=false;
     private static class ProfileOption {
         final String label, transport, config;
         ProfileOption(String label,String transport,String config) { this.label=label; this.transport=transport; this.config=config; }
@@ -56,7 +60,10 @@ public class MainActivity extends Activity {
     private boolean vpnStateReceiverRegistered=false;
     private AlertDialog settingsDialog;
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
-        @Override public void onReceive(Context context,Intent intent) { renderVpnState(); }
+        @Override public void onReceive(Context context,Intent intent) {
+            renderVpnState();
+            handleAutoSelectionState();
+        }
     };
 
     private GradientDrawable shape(int color,int radius,int stroke) {
@@ -723,6 +730,15 @@ public class MainActivity extends Activity {
         String old=prefs.getString("selection_mode","auto");
         boolean changed=!next.equals(old);
         prefs.edit().putString("selection_mode",next).apply();
+        if ("auto".equals(next)) {
+            // Do not let an in-memory manual selection bypass auto-selection.
+            selectedConfig="";
+            autoFallbackProfiles.clear();
+            autoFallbackIndex=0;
+        } else {
+            autoFallbackProfiles.clear();
+            autoFallbackIndex=0;
+        }
         updateProtocolBadge();
         // The checked card already confirms the mode; avoid stacking transient messages.
         // Update the open settings card in place to avoid the dismiss/reopen flicker.
@@ -1763,12 +1779,59 @@ public class MainActivity extends Activity {
                         .setItems(labels,(d,which)->selectProfile(result.get(which)))
                         .setNegativeButton("Отмена",null).show();
                 } else {
-                    ProfileOption chosen=result.get(0);
-                    DebugLog.i(this,"PROFILE","Автоматический выбор профиля: "+chosen.label+"; transport="+chosen.transport);
+                    // Reuse the last transport that reached the connected state, then try
+                    // the remaining subscription entries in their original order.
+                    String lastGood=prefs.getString("last_successful_transport","");
+                    java.util.ArrayList<ProfileOption> ordered=new java.util.ArrayList<>();
+                    if(!lastGood.isEmpty()) {
+                        for(ProfileOption option:result)
+                            if(lastGood.equalsIgnoreCase(option.transport)) ordered.add(option);
+                    }
+                    for(ProfileOption option:result) if(!ordered.contains(option)) ordered.add(option);
+                    autoFallbackProfiles.clear();
+                    autoFallbackProfiles.addAll(ordered);
+                    autoFallbackIndex=0;
+                    ProfileOption chosen=ordered.get(0);
+                    DebugLog.i(this,"PROFILE","Автовыбор: кандидат 1/"+ordered.size()+": "+chosen.label
+                        +"; transport="+chosen.transport+"; прошлый успешный="+(lastGood.isEmpty()?"нет":lastGood));
                     selectProfile(chosen);
                 }
             });
         }).start();
+    }
+
+    private void handleAutoSelectionState() {
+        if(!"auto".equals(prefs.getString("selection_mode","auto"))) return;
+        if("connected".equals(SeyroVpnService.vpnState)) {
+            if(!activeTransport.isEmpty()) {
+                prefs.edit().putString("last_successful_transport",activeTransport).apply();
+                DebugLog.i(this,"AUTO","Запомнен успешно запущенный транспорт: "+activeTransport);
+            }
+            autoFallbackProfiles.clear();
+            autoFallbackIndex=0;
+            handlingAutoFallback=false;
+            return;
+        }
+        if(!"error".equals(SeyroVpnService.vpnState) || handlingAutoFallback
+                || autoFallbackIndex+1>=autoFallbackProfiles.size()) return;
+        handlingAutoFallback=true;
+        autoFallbackIndex++;
+        ProfileOption next=autoFallbackProfiles.get(autoFallbackIndex);
+        selectedConfig=next.config;
+        activeTransport=next.transport;
+        prefs.edit().putString("selected_transport",activeTransport).apply();
+        DebugLog.w(this,"AUTO","Не удалось запустить предыдущий профиль; пробуем "
+            +(autoFallbackIndex+1)+"/"+autoFallbackProfiles.size()+": "+next.label+"; transport="+next.transport);
+        if(connect!=null) { connect.setEnabled(false); connect.setText("Пробуем другой профиль…"); }
+        if(hint!=null) hint.setText("Первый профиль не запустился. Пробуем "+next.transport.toUpperCase(java.util.Locale.ROOT)+"…");
+        new android.os.Handler(getMainLooper()).postDelayed(() -> {
+            handlingAutoFallback=false;
+            if("auto".equals(prefs.getString("selection_mode","auto"))
+                    && "error".equals(SeyroVpnService.vpnState)) {
+                updateProtocolBadge();
+                requestVpnPermissionAndStart();
+            }
+        },350);
     }
 
     private void selectProfile(ProfileOption option) {
