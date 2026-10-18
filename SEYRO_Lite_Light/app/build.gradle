@@ -30,8 +30,10 @@ android {
 }
 dependencies {
     implementation 'androidx.core:core:1.15.0'
-    // Experimental sing-box engine; the stable Xray + HEV path remains untouched.
-    implementation 'com.github.singbox-android:libbox:1.14.3'
+    // Keep libbox out of the packaged runtime for now: libbox and libv2ray.aar
+    // both ship go.Seq/go.Universe classes. The sing-box engine must be integrated
+    // in a separate build variant before both libraries can be packaged together.
+    compileOnly 'com.github.singbox-android:libbox:1.14.3'
     implementation files('libs/libv2ray.aar')
     implementation files('libs/hev-socks5-tunnel.aar')
 }
