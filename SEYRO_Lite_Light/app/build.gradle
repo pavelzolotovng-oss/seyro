@@ -30,6 +30,8 @@ android {
 }
 dependencies {
     implementation 'androidx.core:core:1.15.0'
+    // Experimental sing-box engine; the stable Xray + HEV path remains untouched.
+    implementation 'com.github.singbox-android:libbox:1.14.3'
     implementation files('libs/libv2ray.aar')
     implementation files('libs/hev-socks5-tunnel.aar')
 }
