@@ -8,7 +8,7 @@ android {
     buildFeatures { buildConfig true }
     compileSdk 35
     defaultConfig {
-        applicationId 'com.seyro.lite'
+        applicationId 'com.seyro.lite.singboxtest'
         minSdk 29
         targetSdk 35
         versionCode buildNumber
