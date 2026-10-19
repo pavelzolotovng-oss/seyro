@@ -1,5 +1,6 @@
 name: Build SEYRO Monitor APK
 
+# Rebuild requested on 2026-10-19.
 on:
   workflow_dispatch:
   push:
