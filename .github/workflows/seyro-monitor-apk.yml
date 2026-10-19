@@ -5,10 +5,13 @@ on:
   push:
     branches:
       - main
-      - feature/seyro-monitor-mvp
     paths:
       - 'SEYRO_Monitor/**'
       - '.github/workflows/seyro-monitor-apk.yml'
+
+concurrency:
+  group: seyro-monitor-apk-main
+  cancel-in-progress: true
 
 permissions:
   contents: read
