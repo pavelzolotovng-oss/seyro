@@ -582,7 +582,7 @@ public class MainActivity extends Activity {
             ()->changeSelectionMode("auto"));
         autoOption.setTag("mode_auto");
         LinearLayout manualOption=addSettingsOption(options,"Ручной выбор",
-            "Самостоятельно выбирать транспорт TCP или XHTTP",manual,
+            "Самостоятельно выбирать доступный профиль подписки",manual,
             ()->changeSelectionMode("manual"));
         manualOption.setTag("mode_manual");
 
@@ -865,7 +865,7 @@ public class MainActivity extends Activity {
         TextView title=text("Профиль подключения",19,ink,true);
         title.setGravity(Gravity.CENTER);
         add(box,title,dp(12));
-        TextView subtitle=text("Выберите поддерживаемый транспорт (TCP, gRPC и другие доступные)",12,muted,false);
+        TextView subtitle=text("Выберите профиль из подписки",12,muted,false);
         subtitle.setGravity(Gravity.CENTER);
         add(box,subtitle,dp(5));
 
@@ -874,23 +874,30 @@ public class MainActivity extends Activity {
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
         String persistedTransport=prefs.getString("selected_transport","");
         for(ProfileOption option:profiles) {
-            // sing-box 1.14.3 does not implement Xray XHTTP. Keep it out of the
-            // manual picker so users cannot select a profile that cannot start.
-            if ("xhttp".equalsIgnoreCase(option.transport)) continue;
-            // On a fresh app launch selectedConfig is empty until Connect is pressed.
-            // The saved transport is the source of truth for the picker in that case.
+            boolean unsupported = "xhttp".equalsIgnoreCase(option.transport);
+            // Keep every subscription profile visible. XHTTP is displayed but
+            // disabled until the bundled sing-box runtime can actually run it.
             boolean selected=!selectedConfig.isEmpty()
                 ? selectedConfig.equals(option.config)
                 : (!activeTransport.isEmpty() && activeTransport.equalsIgnoreCase(option.transport))
                     || (!persistedTransport.isEmpty() && persistedTransport.equalsIgnoreCase(option.transport));
             String transport=option.transport.toUpperCase(java.util.Locale.ROOT);
-            LinearLayout item=rowCard(option.label,transport+(selected?" · выбран":""),
-                selected?"✓":"›",selected);
+            String description = unsupported
+                ? "XHTTP · пока не поддерживается текущей версией sing-box"
+                : transport+(selected?" · выбран":"");
+            LinearLayout item=rowCard(option.label,description,
+                unsupported?"!":(selected?"✓":"›"),selected && !unsupported);
             add(list,item,dp(7));
-            item.setOnClickListener(v->{
-                dialog.dismiss();
-                selectProfileWithoutStarting(option);
-            });
+            if(unsupported) {
+                item.setAlpha(0.62f);
+                item.setOnClickListener(v->showSimpleStyledNotice("Профиль XHTTP пока недоступен",
+                    "Подписка содержит этот профиль, но текущий движок SEYRO на sing-box не умеет запускать его. Выберите TCP; поддержку XHTTP нужно добавить отдельно."));
+            } else {
+                item.setOnClickListener(v->{
+                    dialog.dismiss();
+                    selectProfileWithoutStarting(option);
+                });
+            }
         }
         LinearLayout buttons=new LinearLayout(this);
         buttons.setGravity(Gravity.CENTER);
