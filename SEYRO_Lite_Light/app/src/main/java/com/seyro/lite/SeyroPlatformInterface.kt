@@ -38,28 +38,33 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            // Once VpnService is up, Android may report our own VPN as the
-            // default network. Never replace the physical underlay with tun0.
+            DebugLog.i(vpn, "NETWORK", "onAvailable: network=$network; capabilities=${connectivity.getNetworkCapabilities(network)}; interface=${connectivity.getLinkProperties(network)?.interfaceName}")
+            // Never replace the physical underlay with tun0.
             if (!isPhysicalNetwork(network)) {
-                DebugLog.d(vpn, "NETWORK", "Игнорируется виртуальная сеть Android VPN")
+                DebugLog.w(vpn, "NETWORK", "onAvailable отклонён: сеть не распознана как физическая; network=$network")
                 return
             }
             defaultNetwork.set(network)
+            DebugLog.i(vpn, "NETWORK", "Физическая сеть выбрана по onAvailable: network=$network")
             notifyDefaultInterface(network)
         }
 
         override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) {
-            // Android can deliver onAvailable before capabilities/link properties
-            // are populated. Re-check here so Wi-Fi is not silently ignored.
+            DebugLog.i(vpn, "NETWORK", "onLinkPropertiesChanged: network=$network; interface=${linkProperties.interfaceName}; addresses=${linkProperties.linkAddresses}; routes=${linkProperties.routes.size}; capabilities=${connectivity.getNetworkCapabilities(network)}")
             if (isPhysicalNetwork(network)) {
                 defaultNetwork.set(network)
+                DebugLog.i(vpn, "NETWORK", "Физическая сеть подтверждена после обновления параметров: ${linkProperties.interfaceName}")
                 notifyDefaultInterface(network)
+            } else {
+                DebugLog.w(vpn, "NETWORK", "Сеть пока не прошла физическую проверку после обновления параметров: $network")
             }
         }
 
         override fun onLost(network: Network) {
+            DebugLog.w(vpn, "NETWORK", "onLost: network=$network; previousDefault=${defaultNetwork.get()}")
             if (defaultNetwork.compareAndSet(network, null)) {
                 val replacement = findPhysicalDefaultNetwork()
+                DebugLog.i(vpn, "NETWORK", "Потеряна активная сеть; замена=${replacement ?: "нет"}")
                 defaultNetwork.set(replacement)
                 notifyDefaultInterface(replacement)
             }
@@ -67,20 +72,46 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
     }
 
     private fun isPhysicalNetwork(network: Network): Boolean {
-        val caps = connectivity.getNetworkCapabilities(network) ?: return false
-        if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return false
-        val props = connectivity.getLinkProperties(network) ?: return false
-        val name = props.interfaceName ?: return false
-        if (name.startsWith("tun") || name.startsWith("wg")) return false
-        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+        val caps = connectivity.getNetworkCapabilities(network)
+        if (caps == null) {
+            DebugLog.d(vpn, "NETWORK", "isPhysicalNetwork=false: capabilities ещё отсутствуют для $network")
+            return false
+        }
+        if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+            DebugLog.d(vpn, "NETWORK", "isPhysicalNetwork=false: Android пометил $network как VPN")
+            return false
+        }
+        val props = connectivity.getLinkProperties(network)
+        if (props == null) {
+            DebugLog.d(vpn, "NETWORK", "isPhysicalNetwork=false: LinkProperties ещё отсутствуют для $network")
+            return false
+        }
+        val name = props.interfaceName
+        if (name == null) {
+            DebugLog.d(vpn, "NETWORK", "isPhysicalNetwork=false: interfaceName отсутствует для $network")
+            return false
+        }
+        if (name.startsWith("tun") || name.startsWith("wg")) {
+            DebugLog.w(vpn, "NETWORK", "isPhysicalNetwork=false: виртуальный интерфейс $name")
+            return false
+        }
+        val physical = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
             caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
             caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        DebugLog.i(vpn, "NETWORK", "Проверка физической сети: network=$network; interface=$name; physical=$physical; wifi=${caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)}; cellular=${caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)}; ethernet=${caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)}; validated=${caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)}; internet=${caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)}")
+        return physical
     }
 
     private fun findPhysicalDefaultNetwork(): Network? {
         val active = connectivity.activeNetwork
-        if (active != null && isPhysicalNetwork(active)) return active
-        return connectivity.allNetworks.firstOrNull { isPhysicalNetwork(it) }
+        DebugLog.i(vpn, "NETWORK", "Поиск физической сети: activeNetwork=$active; allNetworks=${connectivity.allNetworks.joinToString()}")
+        if (active != null && isPhysicalNetwork(active)) {
+            DebugLog.i(vpn, "NETWORK", "Физическая сеть найдена как activeNetwork=$active")
+            return active
+        }
+        val fallback = connectivity.allNetworks.firstOrNull { isPhysicalNetwork(it) }
+        DebugLog.i(vpn, "NETWORK", "Результат поиска физической сети: ${fallback ?: "не найдена"}")
+        return fallback
     }
 
     override fun usePlatformAutoDetectInterfaceControl(): Boolean = true
@@ -145,6 +176,7 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
         try {
             val properties = connectivity.getLinkProperties(network)
             val name = properties?.interfaceName
+            DebugLog.i(vpn, "NETWORK", "notifyDefaultInterface: network=$network; interface=$name; propertiesPresent=${properties != null}")
             if (name.isNullOrBlank()) {
                 listener.updateDefaultInterface("", -1, false, false)
                 DebugLog.e(vpn, "NETWORK", "У активной сети отсутствует имя интерфейса")
