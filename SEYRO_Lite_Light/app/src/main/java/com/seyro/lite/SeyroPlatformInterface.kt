@@ -49,7 +49,10 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
         }
 
         override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) {
-            if (defaultNetwork.get() == network && isPhysicalNetwork(network)) {
+            // Android can deliver onAvailable before capabilities/link properties
+            // are populated. Re-check here so Wi-Fi is not silently ignored.
+            if (isPhysicalNetwork(network)) {
+                defaultNetwork.set(network)
                 notifyDefaultInterface(network)
             }
         }
