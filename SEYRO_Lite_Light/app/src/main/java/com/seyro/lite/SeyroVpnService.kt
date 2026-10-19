@@ -56,8 +56,12 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     override fun onCreate() {
         super.onCreate()
         activeInstance = this
+        DebugLog.i(this, "SERVICE", "VPN service onCreate; Android=${Build.VERSION.RELEASE}; SDK=${Build.VERSION.SDK_INT}; manufacturer=${Build.MANUFACTURER}; model=${Build.MODEL}")
         runCatching { Libbox.setLocale(Locale.getDefault().toLanguageTag()) }
-            .onFailure { Log.w(TAG, "Could not set sing-box locale", it) }
+            .onFailure {
+                DebugLog.e(this, "SERVICE", "Не удалось установить locale для libbox: ${it.javaClass.simpleName}: ${it.message}")
+                Log.w(TAG, "Could not set sing-box locale", it)
+            }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -83,7 +87,11 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
             return START_NOT_STICKY
         }
         setState("connecting", "")
-        DebugLog.i(this, "SERVICE", "Получена команда запуска; transport=${intent.getStringExtra(EXTRA_TRANSPORT).orEmpty()}; configLength=${sourceConfig.length}")
+        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val active = cm.activeNetwork
+        val caps = active?.let { cm.getNetworkCapabilities(it) }
+        val props = active?.let { cm.getLinkProperties(it) }
+        DebugLog.i(this, "SERVICE", "Получена команда запуска; transport=${intent.getStringExtra(EXTRA_TRANSPORT).orEmpty()}; configLength=${sourceConfig.length}; activeNetwork=$active; interface=${props?.interfaceName}; capabilities=$caps; validated=${caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)}")
         worker.execute {
             try {
                 DebugLog.i(this, "SERVICE", "Преобразование профиля в конфигурацию sing-box")
@@ -179,7 +187,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
         val pfd = builder.establish() ?: error("Android не создал TUN-интерфейс (VPN-разрешение отсутствует)")
         tunDescriptor?.close()
         tunDescriptor = pfd
-        DebugLog.i(this, "TUN", "Android TUN создан успешно")
+        DebugLog.i(this, "TUN", "Android TUN создан успешно; fd=${pfd.fd}; activeNetwork=${(getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).activeNetwork}")
         return pfd.fd
     }
 
@@ -251,6 +259,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     }
 
     override fun onDestroy() {
+        DebugLog.w(this, "SERVICE", "VPN service onDestroy; state=$vpnState; lastError=$lastError")
         if (activeInstance === this) activeInstance = null
         worker.execute { stopRuntime() }
         worker.shutdown()
