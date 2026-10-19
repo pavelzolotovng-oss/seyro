@@ -1,14 +1,21 @@
-# SEYRO sing-box runtime integration
+# SEYRO Lite — интеграция sing-box
 
-## Current state
-- The SEYRO Lite app uses `com.github.singbox-android:libbox:1.14.3` as a runtime dependency.
-- `SeyroVpnService.kt` starts and stops sing-box through `CommandServer`; the former Xray/HEV service and AAR dependencies are removed from this app.
-- `SeyroPlatformInterface.kt` implements the Android platform bridge and creates the Android TUN interface from sing-box `TunOptions`.
-- `SingBoxConfigBuilder.java` converts SEYRO's generated VLESS Xray JSON into sing-box JSON for TCP, gRPC, WebSocket, and HTTPUpgrade.
-- GitHub Actions successfully compiled and published the first ARM64 APK. Build success confirms compilation/package creation, not a verified live VPN connection.
-- The application ID is `com.seyro.lite`, intended to update the existing SEYRO Lite installation rather than install a second app. The APK must be signed with the same release key as the installed app.
+## Текущее состояние
 
-## Known limitations before production
-- XHTTP is not supported by sing-box 1.14.3's V2Ray transport set; profiles using XHTTP must report a clear unsupported-transport error or use a supported transport.
-- Physical-device verification is still required for VPN permission, TUN routing, DNS, and a real VLESS + REALITY endpoint.
-- Before treating this as a stable release, verify VPN permission, TUN routing, DNS, and a real VLESS + REALITY endpoint on the target device.
+- Единственный VPN-движок в приложении — `com.github.singbox-android:libbox:1.14.3`.
+- `SeyroVpnService.kt` управляет жизненным циклом sing-box через `CommandServer`.
+- `SeyroPlatformInterface.kt` связывает libbox с Android `VpnService` и создаёт TUN-интерфейс.
+- `SingBoxConfigBuilder.java` преобразует конфигурацию профиля VLESS в формат sing-box. Поддерживаются TCP, gRPC, WebSocket и HTTPUpgrade; XHTTP в текущем наборе возможностей не поддерживается.
+- Все изменения делаются непосредственно в `main` единого репозитория `pavelzolotovng-oss/seyro`.
+- Тестовый package ID: `com.seyro.lite.singboxtest`. Его нельзя менять без отдельного решения, иначе установленная тестовая версия не сможет обновиться поверх себя.
+- Workflow публикует APK под тегами `debug-build-<номер>`. Сохраняйте тот же ключ подписи.
+
+## Проверка перед стабильным выпуском
+
+1. Убедиться, что Android выдаёт VPN-разрешение и TUN создаётся.
+2. Проверить соединение на реальном VLESS + REALITY профиле.
+3. Убедиться, что открываются сайты по доменам и IP, работает DNS и не теряется IPv6-трафик.
+4. Проверить остановку/повторный запуск VPN и поведение при недоступном сервере.
+5. Проверить обновление APK поверх установленной тестовой версии.
+
+Успешная GitHub Actions сборка подтверждает компиляцию и упаковку APK, но не является доказательством работоспособности живого VPN-соединения.
