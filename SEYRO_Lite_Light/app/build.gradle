@@ -14,7 +14,7 @@ android {
     }
     kotlinOptions { jvmTarget = '17' }
     defaultConfig {
-        applicationId 'com.seyro.lite.singboxtest'
+        applicationId 'com.seyro.lite'
         minSdk 29
         targetSdk 35
         // SEYRO's target Android device is ARM64; exclude unused native ABIs from the APK.
