@@ -101,11 +101,11 @@ public class MainActivity extends Activity {
         activeTransport=prefs.getString("selected_transport","");
         loadCachedSubscriptionMetadata();
         DebugLog.i(this,"APP","Запуск приложения; VPN state="+SeyroVpnService.vpnState+"; Android="+Build.VERSION.RELEASE+"; SDK="+Build.VERSION.SDK_INT+"; model="+Build.MANUFACTURER+"/"+Build.MODEL);
+        Thread.UncaughtExceptionHandler systemHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             DebugLog.e(MainActivity.this, "CRASH", "Необработанное исключение в потоке "+thread.getName()+": "+error.getClass().getName()+": "+error.getMessage());
             android.util.Log.e("SEYRO-CRASH", "Uncaught exception in "+thread.getName(), error);
-            Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
-            if (previous != null && previous != Thread.getDefaultUncaughtExceptionHandler()) previous.uncaughtException(thread, error);
+            if (systemHandler != null) systemHandler.uncaughtException(thread, error);
             else android.os.Process.killProcess(android.os.Process.myPid());
         });
         Window w=getWindow();
