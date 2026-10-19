@@ -137,10 +137,6 @@ public final class SingBoxConfigBuilder {
         direct.put("type", "direct");
         direct.put("tag", "direct");
         singOutbounds.put(direct);
-        JSONObject block = new JSONObject();
-        block.put("type", "block");
-        block.put("tag", "block");
-        singOutbounds.put(block);
 
         // Use Android's resolver for DNS lookups required by outbound connection
         // setup, while keeping ordinary tunneled client DNS on encrypted DoT
@@ -173,13 +169,15 @@ public final class SingBoxConfigBuilder {
         JSONArray routeRules = new JSONArray();
         routeRules.put(new JSONObject().put("protocol", "dns").put("action", "hijack-dns"));
         routeRules.put(new JSONObject().put("port", 53).put("action", "hijack-dns"));
-        // Honor Android Private DNS: DoT (TCP/853) uses the physical connection
-        // directly instead of forcing the user's configured resolver through VLESS.
-        routeRules.put(new JSONObject().put("port", 853).put("outbound", "direct"));
-        // Some VLESS endpoints or middleboxes may not carry QUIC/HTTP3 reliably.
-        // Block UDP/443 inside the tunnel so browsers fall back to TCP-based HTTP/2.
-        // Do not route it to "direct": that would bypass the VPN for this traffic.
-        routeRules.put(new JSONObject().put("network", "udp").put("port", 443).put("outbound", "block"));
+        // Keep private/LAN destinations on the device's physical network.
+        routeRules.put(new JSONObject().put("ip_is_private", true).put("outbound", "direct"));
+        // Do not let app-level DoT bypass the VPN. DNS for the tunnel is handled
+        // by sing-box's configured resolver; reject independent TCP/853 sessions.
+        routeRules.put(new JSONObject().put("port", 853).put("action", "reject").put("method", "default"));
+        // Reject QUIC/HTTP3 cleanly so browsers can fall back to TCP-based HTTP/2.
+        // An action rule avoids the noisy unsupported packet-listen path in block outbound.
+        routeRules.put(new JSONObject().put("network", "udp").put("port", 443)
+            .put("action", "reject").put("method", "default"));
         route.put("rules", routeRules);
         route.put("final", "proxy");
 
