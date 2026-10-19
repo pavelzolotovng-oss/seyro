@@ -111,6 +111,25 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
                 val root = JSONObject(singBoxConfig)
                 val inbounds = root.optJSONArray("inbounds")
                 val outbounds = root.optJSONArray("outbounds")
+                val route = root.optJSONObject("route")
+                val routeRules = route?.optJSONArray("rules")
+                val outboundSummary = (0 until (outbounds?.length() ?: 0)).mapNotNull { i ->
+                    outbounds?.optJSONObject(i)?.let { "${it.optString("tag")}: ${it.optString("type")}" }
+                }
+                val ruleSummary = (0 until (routeRules?.length() ?: 0)).mapNotNull { i ->
+                    routeRules?.optJSONObject(i)?.toString()
+                }
+                // Log the exact effective config shape immediately before libbox startup.
+                // Redact VLESS UUID so credentials never enter persistent/logcat diagnostics.
+                val diagnosticConfig = JSONObject(singBoxConfig)
+                val diagnosticOutbounds = diagnosticConfig.optJSONArray("outbounds")
+                for (i in 0 until (diagnosticOutbounds?.length() ?: 0)) {
+                    diagnosticOutbounds?.optJSONObject(i)?.let { outbound ->
+                        if (outbound.optString("type") == "vless") outbound.put("uuid", "<redacted>")
+                    }
+                }
+                DebugLog.i(this, "CONFIG_DUMP", "Effective sing-box config before startOrReloadService (UUID redacted): ${diagnosticConfig}")
+                DebugLog.i(this, "CONFIG_DUMP", "route.final=${route?.optString("final")}; auto_detect_interface=${route?.optBoolean("auto_detect_interface")}; find_process=${route?.optBoolean("find_process")}; rules=$ruleSummary; outbounds=$outboundSummary; tunSniffFieldPresent=${inbounds?.optJSONObject(0)?.has("sniff") == true}")
                 DebugLog.i(this, "SERVICE", "Конфигурация собрана: inbounds=${inbounds?.length() ?: 0}; outbounds=${outbounds?.length() ?: 0}; dnsServers=${root.optJSONObject("dns")?.optJSONArray("servers")?.length() ?: 0}")
                 DebugLog.i(this, "SERVICE", "Этап 2: инициализация Libbox")
                 initializeLibbox()
