@@ -114,7 +114,7 @@ public class MainActivity extends Activity {
         TextView mark=text("S",27,white,true); mark.setGravity(Gravity.CENTER); mark.setBackground(shape(0xff087cff,dp(14),0));
         mark.setElevation(dp(3)); header.addView(mark,new LinearLayout.LayoutParams(dp(48),dp(48)));
         LinearLayout brand=column(); TextView name=text("SEYRO",23,ink,true); name.setLetterSpacing(.07f); brand.addView(name);
-        TextView tagline=text("LITE VPN",9,blue,true); tagline.setLetterSpacing(.18f); brand.addView(tagline);
+        TextView tagline=text("VPN",9,blue,true); tagline.setLetterSpacing(.18f); brand.addView(tagline);
         LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,-2,1); bp.leftMargin=11; header.addView(brand,bp);
         TextView settings=text("⚙",28,blue,true); settings.setGravity(Gravity.CENTER);
         settings.setContentDescription("Настройки");
@@ -611,7 +611,7 @@ public class MainActivity extends Activity {
         }
 
         LinearLayout appUpdate=rowCard("Обновить приложение",
-            "Проверить наличие новой версии SEYRO Lite","⬇",false);
+            "Проверить наличие новой версии SEYRO","⬇",false);
         add(options,appUpdate,dp(8));
         appUpdate.setOnClickListener(v->{
             if(settingsDialog!=null) settingsDialog.dismiss();
@@ -1068,7 +1068,7 @@ public class MainActivity extends Activity {
         });
         share.setOnClickListener(v->{
             Intent intent=new Intent(Intent.ACTION_SEND).setType("text/plain")
-                .putExtra(Intent.EXTRA_SUBJECT,"SEYRO Lite — журнал отладки")
+                .putExtra(Intent.EXTRA_SUBJECT,"SEYRO — журнал отладки")
                 .putExtra(Intent.EXTRA_TEXT,DebugLog.read(this));
             startActivity(Intent.createChooser(intent,"Отправить журнал"));
         });
@@ -1251,7 +1251,7 @@ public class MainActivity extends Activity {
                 conn.setConnectTimeout(8000);
                 conn.setReadTimeout(10000);
                 conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("User-Agent","SEYRO-Lite/"+APP_VERSION);
+                conn.setRequestProperty("User-Agent","SEYRO/"+APP_VERSION);
                 DebugLog.d(this, "SUBSCRIPTION", "Ожидание HTTP-ответа подписки");
             int code=conn.getResponseCode();
                 if(code>=200 && code<300) {
@@ -1447,7 +1447,7 @@ public class MainActivity extends Activity {
             "; announce="+(!subscriptionAnnounce.isEmpty())+"; userinfo="+(userInfo!=null));
     }
 
-    private static final String UPDATE_API = "https://api.github.com/repos/pavelzolotovng-oss/seyro-lite/releases?per_page=100";
+    private static final String UPDATE_API = "https://api.github.com/repos/pavelzolotovng-oss/seyro/releases?per_page=100";
     private volatile boolean updateCheckInProgress = false;
     private boolean pendingInstallAfterPermission = false;
 
@@ -1460,7 +1460,7 @@ public class MainActivity extends Activity {
         long last = prefs.getLong("last_update_check_at", 0L);
         if (!force && System.currentTimeMillis() - last < 6L * 60L * 60L * 1000L) return;
         updateCheckInProgress = true;
-        if (force) Toast.makeText(this, "Проверяем обновления SEYRO Lite…", Toast.LENGTH_SHORT).show();
+        if (force) Toast.makeText(this, "Проверяем обновления SEYRO…", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             java.net.HttpURLConnection conn = null;
             try {
@@ -1468,7 +1468,7 @@ public class MainActivity extends Activity {
                 conn.setConnectTimeout(8000); conn.setReadTimeout(10000);
                 conn.setRequestProperty("Accept", "application/vnd.github+json");
                 conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-                conn.setRequestProperty("User-Agent", "SEYRO-Lite/" + APP_VERSION);
+                conn.setRequestProperty("User-Agent", "SEYRO/" + APP_VERSION);
                 int code = conn.getResponseCode();
                 if (code < 200 || code >= 300) throw new java.io.IOException("GitHub HTTP " + code);
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -1493,7 +1493,7 @@ public class MainActivity extends Activity {
                         boolean hasApk = false;
                         if (candidateAssets != null) for (int j = 0; j < candidateAssets.length(); j++) {
                             JSONObject asset = candidateAssets.optJSONObject(j);
-                            if (asset != null && "app-debug.apk".equals(asset.optString("name"))) {
+                            if (asset != null && "seyro.apk".equals(asset.optString("name"))) {
                                 hasApk = true; break;
                             }
                         }
@@ -1502,20 +1502,20 @@ public class MainActivity extends Activity {
                 }
                 if (release == null) {
                     if (force) runOnUiThread(() -> showSimpleStyledNotice("Обновления",
-                        "Не удалось найти опубликованную сборку SEYRO Lite. Попробуйте позже."));
+                        "Не удалось найти опубликованную сборку SEYRO. Попробуйте позже."));
                     return;
                 }
                 if (remoteCode <= BuildConfig.VERSION_CODE) {
                     prefs.edit().putLong("last_update_check_at", System.currentTimeMillis()).apply();
                     if (force) runOnUiThread(() -> showSimpleStyledNotice("Обновлений нет",
-                        "У вас установлена последняя версия SEYRO Lite (" + APP_VERSION + ")."));
+                        "У вас установлена последняя версия SEYRO (" + APP_VERSION + ")."));
                     return;
                 }
                 JSONArray assets = release.optJSONArray("assets");
                 String apkUrl = null;
                 if (assets != null) for (int i = 0; i < assets.length(); i++) {
                     JSONObject asset = assets.optJSONObject(i);
-                    if (asset != null && "app-debug.apk".equals(asset.optString("name"))) {
+                    if (asset != null && "seyro.apk".equals(asset.optString("name"))) {
                         apkUrl = asset.optString("browser_download_url", null); break;
                     }
                 }
@@ -1541,8 +1541,8 @@ public class MainActivity extends Activity {
     }
 
     private int parseBuildCode(String tag) {
-        if (tag == null || !tag.startsWith("debug-build-")) return -1;
-        try { return Integer.parseInt(tag.substring("debug-build-".length())); }
+        if (tag == null || !tag.startsWith("seyro-v0.9.")) return -1;
+        try { return Integer.parseInt(tag.substring("seyro-v0.9.".length())); }
         catch (NumberFormatException ignored) { return -1; }
     }
 
@@ -1556,7 +1556,7 @@ public class MainActivity extends Activity {
         brand.setGravity(Gravity.CENTER);
         brand.setLetterSpacing(.08f);
         box.addView(brand);
-        TextView subtitle=text("LITE VPN  ·  SEYRO.RU",10,blue,true);
+        TextView subtitle=text("VPN  ·  SEYRO.RU",10,blue,true);
         subtitle.setGravity(Gravity.CENTER);
         add(box,subtitle,dp(3));
 
@@ -1649,7 +1649,7 @@ public class MainActivity extends Activity {
                 java.io.File apk = new java.io.File(dir, "seyro-lite-update.apk");
                 conn = (java.net.HttpURLConnection) new URL(apkUrl).openConnection();
                 conn.setConnectTimeout(15000); conn.setReadTimeout(30000); conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("User-Agent", "SEYRO-Lite/" + APP_VERSION);
+                conn.setRequestProperty("User-Agent", "SEYRO/" + APP_VERSION);
                 int code = conn.getResponseCode();
                 if (code < 200 || code >= 300) throw new java.io.IOException("HTTP " + code);
                 long expected=conn.getContentLengthLong();
@@ -1914,7 +1914,7 @@ public class MainActivity extends Activity {
             throw new IllegalArgumentException("Для подписки нужна ссылка HTTPS или HTTP.");
         java.net.HttpURLConnection conn=(java.net.HttpURLConnection)url.openConnection();
         conn.setConnectTimeout(12000); conn.setReadTimeout(15000); conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent","SEYRO-Lite/"+APP_VERSION);
+        conn.setRequestProperty("User-Agent","SEYRO/"+APP_VERSION);
         try {
             int code=conn.getResponseCode();
             readSubscriptionMetadata(conn);
