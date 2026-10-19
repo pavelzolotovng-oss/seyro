@@ -271,6 +271,20 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     override fun getSystemProxyStatus(): SystemProxyStatus? = null
     override fun setSystemProxyEnabled(isEnabled: Boolean) {}
     override fun triggerNativeCrash() { throw RuntimeException("sing-box native crash requested") }
-    override fun writeDebugMessage(message: String?) { Log.d(TAG, message.orEmpty()) }
+    override fun writeDebugMessage(message: String?) {
+        val line = message.orEmpty().trim()
+        if (line.isEmpty()) return
+        Log.d(TAG, line)
+        // Keep native sing-box diagnostics in the in-app log as well as Logcat,
+        // so connection failures can be diagnosed without a USB/debugging setup.
+        when {
+            line.contains("error", ignoreCase = true) ||
+                line.contains("failed", ignoreCase = true) ||
+                line.contains("timeout", ignoreCase = true) ||
+                line.contains("refused", ignoreCase = true) ->
+                DebugLog.e(this, "SINGBOX", line.take(1200))
+            else -> DebugLog.d(this, "SINGBOX", line.take(1200))
+        }
+    }
     override fun connectSSHAgent(): Int = -1
 }
