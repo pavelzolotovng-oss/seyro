@@ -3,8 +3,6 @@ plugins {
     id 'org.jetbrains.kotlin.android' version '2.0.21'
 }
 
-// GitHub Actions supplies a monotonically increasing run number. Local builds
-// use a fallback version so the app always has valid Android package metadata.
 def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '13').toInteger()
 android {
     namespace 'com.seyro.lite'
@@ -26,19 +24,10 @@ android {
         }
     }
     buildTypes {
-        debug {
-            signingConfig signingConfigs.stable
-        }
+        debug { signingConfig signingConfigs.stable }
     }
 }
 dependencies {
     implementation 'androidx.core:core:1.15.0'
-    // Keep libbox out of the packaged runtime for now: libbox and libv2ray.aar
-    // both ship go.Seq/go.Universe classes. The sing-box engine must be integrated
-    // in a separate build variant before both libraries can be packaged together.
-    // Keep Xray/HEV for the existing service while the new libbox service is implemented.
-    // Do not switch libbox to implementation yet: both AARs export duplicate Go bindings.
-    compileOnly 'com.github.singbox-android:libbox:1.14.3'
-    implementation files('libs/libv2ray.aar')
-    implementation files('libs/hev-socks5-tunnel.aar')
+    implementation 'com.github.singbox-android:libbox:1.14.3'
 }
