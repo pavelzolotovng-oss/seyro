@@ -100,7 +100,14 @@ public class MainActivity extends Activity {
         profileLink=prefs.getString("subscription_link","");
         activeTransport=prefs.getString("selected_transport","");
         loadCachedSubscriptionMetadata();
-        DebugLog.i(this,"APP","Запуск приложения; VPN state="+SeyroVpnService.vpnState);
+        DebugLog.i(this,"APP","Запуск приложения; VPN state="+SeyroVpnService.vpnState+"; Android="+Build.VERSION.RELEASE+"; SDK="+Build.VERSION.SDK_INT+"; model="+Build.MANUFACTURER+"/"+Build.MODEL);
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            DebugLog.e(MainActivity.this, "CRASH", "Необработанное исключение в потоке "+thread.getName()+": "+error.getClass().getName()+": "+error.getMessage());
+            android.util.Log.e("SEYRO-CRASH", "Uncaught exception in "+thread.getName(), error);
+            Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+            if (previous != null && previous != Thread.getDefaultUncaughtExceptionHandler()) previous.uncaughtException(thread, error);
+            else android.os.Process.killProcess(android.os.Process.myPid());
+        });
         Window w=getWindow();
         w.setStatusBarColor(0xfff3f7ff); w.setNavigationBarColor(0xfff3f7ff);
         w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -2136,16 +2143,27 @@ public class MainActivity extends Activity {
         }
     }
     private void startVpnService() {
-        DebugLog.i(this,"VPN","Отправлена команда запуска службы; конфигурация не записывается");
-        status.setText("●  ПОДКЛЮЧАЕМСЯ"); status.setTextColor(blue);
-        connect.setText("Подождите…"); connect.setEnabled(false);
-        hint.setText("Запускаем защищённый туннель…");
-        Intent intent=new Intent(this,SeyroVpnService.class);
-        intent.setAction(SeyroVpnService.ACTION_START);
-        intent.putExtra(SeyroVpnService.EXTRA_CONFIG,selectedConfig);
-        intent.putExtra(SeyroVpnService.EXTRA_TRANSPORT,activeTransport);
-        boolean isAuto = "auto".equals(prefs.getString("selection_mode", "auto"));
-        intent.putExtra(SeyroVpnService.EXTRA_BY_AUTO, isAuto);
-        if(Build.VERSION.SDK_INT>=26) startForegroundService(intent); else startService(intent);
+        DebugLog.i(this,"VPN","Отправлена команда запуска службы; transport="+activeTransport+"; configPresent="+(!selectedConfig.isEmpty())+"; configLength="+selectedConfig.length()+"; Android="+Build.VERSION.SDK_INT);
+        try {
+            status.setText("●  ПОДКЛЮЧАЕМСЯ"); status.setTextColor(blue);
+            connect.setText("Подождите…"); connect.setEnabled(false);
+            hint.setText("Запускаем защищённый туннель…");
+            Intent intent=new Intent(this,SeyroVpnService.class);
+            intent.setAction(SeyroVpnService.ACTION_START);
+            intent.putExtra(SeyroVpnService.EXTRA_CONFIG,selectedConfig);
+            intent.putExtra(SeyroVpnService.EXTRA_TRANSPORT,activeTransport);
+            boolean isAuto = "auto".equals(prefs.getString("selection_mode", "auto"));
+            intent.putExtra(SeyroVpnService.EXTRA_BY_AUTO, isAuto);
+            if(Build.VERSION.SDK_INT>=26) startForegroundService(intent); else startService(intent);
+            DebugLog.i(this,"VPN","Команда запуска VPN-службы передана Android");
+        } catch (RuntimeException e) {
+            DebugLog.e(this,"CRASH","Ошибка при отправке команды запуска VPN: "+e.getClass().getName()+": "+e.getMessage());
+            android.util.Log.e("SEYRO-CRASH","Could not start VPN service",e);
+            if(connect!=null) { connect.setEnabled(true); connect.setText("Подключить"); }
+            if(hint!=null) hint.setText("Не удалось запустить VPN-службу. Откройте журнал диагностики.");
+            new AlertDialog.Builder(this).setTitle("Ошибка запуска VPN")
+                .setMessage(e.getClass().getSimpleName()+": "+(e.getMessage()==null?"без подробностей":e.getMessage()))
+                .setPositiveButton("Понятно",null).show();
+        }
     }
 }
