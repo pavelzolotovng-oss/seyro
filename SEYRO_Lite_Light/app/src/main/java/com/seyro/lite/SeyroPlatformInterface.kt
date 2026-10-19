@@ -38,21 +38,46 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
+            // Once VpnService is up, Android may report our own VPN as the
+            // default network. Never replace the physical underlay with tun0.
+            if (!isPhysicalNetwork(network)) {
+                DebugLog.d(vpn, "NETWORK", "Игнорируется виртуальная сеть Android VPN")
+                return
+            }
             defaultNetwork.set(network)
             notifyDefaultInterface(network)
         }
 
         override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) {
-            if (defaultNetwork.get() == network) notifyDefaultInterface(network)
+            if (defaultNetwork.get() == network && isPhysicalNetwork(network)) {
+                notifyDefaultInterface(network)
+            }
         }
 
         override fun onLost(network: Network) {
             if (defaultNetwork.compareAndSet(network, null)) {
-                val replacement = connectivity.activeNetwork
+                val replacement = findPhysicalDefaultNetwork()
                 defaultNetwork.set(replacement)
                 notifyDefaultInterface(replacement)
             }
         }
+    }
+
+    private fun isPhysicalNetwork(network: Network): Boolean {
+        val caps = connectivity.getNetworkCapabilities(network) ?: return false
+        if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return false
+        val props = connectivity.getLinkProperties(network) ?: return false
+        val name = props.interfaceName ?: return false
+        if (name.startsWith("tun") || name.startsWith("wg")) return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
+    private fun findPhysicalDefaultNetwork(): Network? {
+        val active = connectivity.activeNetwork
+        if (active != null && isPhysicalNetwork(active)) return active
+        return connectivity.allNetworks.firstOrNull { isPhysicalNetwork(it) }
     }
 
     override fun usePlatformAutoDetectInterfaceControl(): Boolean = true
@@ -76,7 +101,7 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
         defaultListener = listener
-        val active = connectivity.activeNetwork
+        val active = findPhysicalDefaultNetwork()
         if (active != null) {
             defaultNetwork.set(active)
             notifyDefaultInterface(active)
