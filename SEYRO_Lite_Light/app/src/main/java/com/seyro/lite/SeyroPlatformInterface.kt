@@ -159,7 +159,6 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
                 item.index = physical.index
                 item.mtu = runCatching { physical.mtu }.getOrDefault(1500)
                 item.dnsServer = stringIterator(properties.dnsServers.mapNotNull { it.hostAddress })
-                item.dnsSearchDomain = stringIterator(properties.domains?.split(' ')?.filter { it.isNotBlank() }.orEmpty())
                 item.gateway = stringIterator(
                     properties.routes
                         .filter { it.destination.prefixLength == 0 }
@@ -202,8 +201,10 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
     }
 
     private fun stringIterator(values: List<String>): StringIterator {
-        val iterator = values.iterator()
+        val snapshot = values.toList()
+        val iterator = snapshot.iterator()
         return object : StringIterator {
+            override fun len(): Int = snapshot.size
             override fun hasNext(): Boolean = iterator.hasNext()
             override fun next(): String = iterator.next()
         }
