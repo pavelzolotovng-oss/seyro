@@ -1,5 +1,6 @@
 name: Build SEYRO
 
+# Fresh VPN build requested on 2026-10-19.
 on:
   workflow_dispatch:
   push:
@@ -91,24 +92,3 @@ jobs:
           prerelease: false
           make_latest: true
           files: SEYRO_Lite_Light/app/build/outputs/apk/debug/seyro.apk
-
-      - name: Remove obsolete test releases and development branches
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Keep the official SEYRO release stream and SEYRO Monitor releases.
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.tag_name | test("^(debug-build-|sing-box-test-)")) | [.id, .tag_name] | @tsv' |
-          while IFS="$(printf '\t')" read -r release_id tag_name; do
-            [ -n "$release_id" ] || continue
-            echo "Removing obsolete test release $tag_name"
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id" || echo "::warning::Could not delete release $tag_name"
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag_name" || echo "::warning::Could not delete tag $tag_name"
-          done
-          gh api --paginate "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name' |
-          while IFS= read -r branch_name; do
-            [ "$branch_name" = "main" ] && continue
-            [ -n "$branch_name" ] || continue
-            echo "Removing development branch $branch_name"
-            encoded_branch="$(printf '%s' "$branch_name" | sed 's|/|%2F|g')"
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$encoded_branch" || echo "::warning::Could not delete branch $branch_name"
-          done
