@@ -83,18 +83,28 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
             return START_NOT_STICKY
         }
         setState("connecting", "")
+        DebugLog.i(this, "SERVICE", "Получена команда запуска; transport=${intent.getStringExtra(EXTRA_TRANSPORT).orEmpty()}; configLength=${sourceConfig.length}")
         worker.execute {
             try {
+                DebugLog.i(this, "SERVICE", "Преобразование профиля в конфигурацию sing-box")
                 val singBoxConfig = SingBoxConfigBuilder.fromXrayConfig(sourceConfig)
                 currentConfig = singBoxConfig
+                val root = JSONObject(singBoxConfig)
+                val inbounds = root.optJSONArray("inbounds")
+                val outbounds = root.optJSONArray("outbounds")
+                DebugLog.i(this, "SERVICE", "Конфигурация собрана: inbounds=${inbounds?.length() ?: 0}; outbounds=${outbounds?.length() ?: 0}; dnsServers=${root.optJSONObject("dns")?.optJSONArray("servers")?.length() ?: 0}")
                 initializeLibbox()
+                DebugLog.i(this, "SERVICE", "Libbox инициализирован; запуск CommandServer")
                 val server = CommandServer(this, platform)
                 commandServer = server
                 server.start()
+                DebugLog.i(this, "SERVICE", "CommandServer запущен; передача конфигурации sing-box")
                 server.startOrReloadService(singBoxConfig, OverrideOptions())
                 Log.i(TAG, "sing-box service started")
+                DebugLog.i(this, "SERVICE", "sing-box принял конфигурацию; TUN должен быть создан")
                 setState("connected", "")
             } catch (e: Exception) {
+                DebugLog.e(this, "SERVICE", "Ошибка запуска sing-box: ${e.javaClass.simpleName}: ${e.message}")
                 Log.e(TAG, "sing-box start failed", e)
                 runCatching { commandServer?.closeService() }
                 runCatching { commandServer?.close() }
@@ -134,6 +144,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     }
 
     internal fun openTunInterface(options: TunOptions): Int {
+        DebugLog.i(this, "TUN", "Создание TUN: mtu=${options.mtu}; autoRoute=${options.autoRoute}")
         val builder = Builder().setSession("SEYRO sing-box").setMtu(options.mtu)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
 
@@ -164,9 +175,11 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
             }
         }
         runCatching { builder.addDisallowedApplication(packageName) }
+        DebugLog.i(this, "TUN", "Маршруты TUN: IPv4=0.0.0.0/0; IPv6=$hasIpv6Address; DNS настроен sing-box")
         val pfd = builder.establish() ?: error("Android не создал TUN-интерфейс (VPN-разрешение отсутствует)")
         tunDescriptor?.close()
         tunDescriptor = pfd
+        DebugLog.i(this, "TUN", "Android TUN создан успешно")
         return pfd.fd
     }
 
@@ -227,6 +240,8 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     private fun setState(state: String, error: String) {
         vpnState = state
         lastError = error
+        if (error.isNotBlank()) DebugLog.e(this, "STATE", "VPN state=$state; error=$error")
+        else DebugLog.i(this, "STATE", "VPN state=$state")
         sendBroadcast(Intent(ACTION_STATE_CHANGED).setPackage(packageName))
     }
 
