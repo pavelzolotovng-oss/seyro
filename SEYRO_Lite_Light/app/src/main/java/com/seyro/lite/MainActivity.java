@@ -63,6 +63,7 @@ public class MainActivity extends Activity {
     private AlertDialog settingsDialog;
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) {
+            DebugLog.i(context,"APP","Получено событие VPN state broadcast; action="+intent.getAction()+"; state="+SeyroVpnService.vpnState);
             renderVpnState();
             handleAutoSelectionState();
         }
@@ -96,6 +97,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
+        android.util.Log.i("SEYRO-BOOT","MainActivity.onCreate begin; pid="+android.os.Process.myPid()+"; thread="+Thread.currentThread().getName());
         prefs=getSharedPreferences("seyro_profile",MODE_PRIVATE);
         profileLink=prefs.getString("subscription_link","");
         activeTransport=prefs.getString("selected_transport","");
@@ -216,6 +218,7 @@ public class MainActivity extends Activity {
         TextView footer=text("SEYRO LITE  ·  ВЕРСИЯ "+APP_VERSION,10,0xff93a0b5,true);
         footer.setGravity(Gravity.CENTER); add(root,footer,20);
         setContentView(scroll);
+        DebugLog.i(this,"APP","UI построен; savedState="+(stateBundle!=null)+"; subscriptionConfigured="+(!profileLink.isEmpty())+"; transportPreference="+activeTransport);
         renderVpnState();
         if(!profileLink.isEmpty()) refreshSubscriptionMetadataInBackground();
         checkForAppUpdate(false);
@@ -223,15 +226,18 @@ public class MainActivity extends Activity {
 
     @Override protected void onStart() {
         super.onStart();
+        DebugLog.i(this,"APP","MainActivity.onStart; state="+SeyroVpnService.vpnState+"; receiverRegistered="+vpnStateReceiverRegistered);
         IntentFilter filter=new IntentFilter(SeyroVpnService.ACTION_STATE_CHANGED);
         if(Build.VERSION.SDK_INT>=33) registerReceiver(vpnStateReceiver,filter,Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(vpnStateReceiver,filter);
         vpnStateReceiverRegistered=true;
+        DebugLog.i(this,"APP","VPN state receiver зарегистрирован");
         renderVpnState();
     }
 
     @Override protected void onResume() {
         super.onResume();
+        DebugLog.i(this,"APP","MainActivity.onResume; state="+SeyroVpnService.vpnState+"; lastErrorPresent="+(!SeyroVpnService.lastError.isEmpty()));
         SeyroVpnService.requestImmediateProbe("возврат в приложение / разблокировка экрана");
         if (pendingInstallAfterPermission) {
             pendingInstallAfterPermission = false;
@@ -241,6 +247,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onStop() {
+        DebugLog.i(this,"APP","MainActivity.onStop; state="+SeyroVpnService.vpnState);
         if(vpnStateReceiverRegistered) { unregisterReceiver(vpnStateReceiver); vpnStateReceiverRegistered=false; }
         super.onStop();
     }
@@ -1747,6 +1754,7 @@ public class MainActivity extends Activity {
             .setPositiveButton("Понятно",null).show();
     }
     private void onConnect() {
+        DebugLog.i(this,"UI","onConnect вызван; state="+SeyroVpnService.vpnState+"; subscriptionConfigured="+(!profileLink.isEmpty())+"; selectionMode="+prefs.getString("selection_mode","auto"));
         DebugLog.i(this,"UI","Нажата кнопка подключения; state="+SeyroVpnService.vpnState);
         if("connected".equals(SeyroVpnService.vpnState)) {
             connect.setEnabled(false); connect.setText("Отключаемся…");
