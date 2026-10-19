@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
     // Auto mode keeps the remaining subscription profiles as startup-failure fallbacks.
     private java.util.ArrayList<ProfileOption> autoFallbackProfiles=new java.util.ArrayList<>();
     private int autoFallbackIndex=0;
-    private static final String[] AUTO_TRANSPORT_PRIORITY = {"xhttp", "tcp", "grpc"};
+    private static final String[] AUTO_TRANSPORT_PRIORITY = {"tcp", "grpc", "ws", "httpupgrade"};
     private static final int AUTO_MAX_ATTEMPTS = 4;
     private boolean handlingAutoFallback=false;
     private static class ProfileOption {
@@ -865,7 +865,7 @@ public class MainActivity extends Activity {
         TextView title=text("Профиль подключения",19,ink,true);
         title.setGravity(Gravity.CENTER);
         add(box,title,dp(12));
-        TextView subtitle=text("Выберите транспорт TCP или XHTTP",12,muted,false);
+        TextView subtitle=text("Выберите поддерживаемый транспорт (TCP, gRPC и другие доступные)",12,muted,false);
         subtitle.setGravity(Gravity.CENTER);
         add(box,subtitle,dp(5));
 
@@ -874,6 +874,9 @@ public class MainActivity extends Activity {
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
         String persistedTransport=prefs.getString("selected_transport","");
         for(ProfileOption option:profiles) {
+            // sing-box 1.14.3 does not implement Xray XHTTP. Keep it out of the
+            // manual picker so users cannot select a profile that cannot start.
+            if ("xhttp".equalsIgnoreCase(option.transport)) continue;
             // On a fresh app launch selectedConfig is empty until Connect is pressed.
             // The saved transport is the source of truth for the picker in that case.
             boolean selected=!selectedConfig.isEmpty()
@@ -1758,7 +1761,15 @@ public class MainActivity extends Activity {
                     if(error==null && loaded!=null) {
                         availableProfiles=loaded;
                         for(ProfileOption option:loaded) {
-                            if(savedTransport.equalsIgnoreCase(option.transport)) {
+                            // XHTTP is parsed from subscriptions but is not supported by
+                            // the bundled sing-box runtime. Recover old saved XHTTP choices
+                            // to a supported TCP profile instead of repeatedly failing.
+                            boolean savedTransportUnsupported = "xhttp".equalsIgnoreCase(savedTransport);
+                            if(savedTransport.equalsIgnoreCase(option.transport)
+                                    || (savedTransportUnsupported && "tcp".equalsIgnoreCase(option.transport))) {
+                                if(savedTransportUnsupported) {
+                                    DebugLog.w(this,"PROFILE","Сохранённый XHTTP не поддерживается sing-box; автоматически выбран TCP");
+                                }
                                 selectProfile(option);
                                 return;
                             }
@@ -1767,7 +1778,7 @@ public class MainActivity extends Activity {
                     new AlertDialog.Builder(this)
                         .setTitle("Выберите профиль в настройках")
                         .setMessage(error==null
-                            ?"Сохранённый транспорт не найден в подписке. Выберите TCP или XHTTP через ⚙ → «Выбрать профиль подключения»."
+                            ?"Сохранённый транспорт не найден в подписке. Выберите поддерживаемый профиль через ⚙ → «Выбрать профиль подключения»."
                             :"Не удалось восстановить профиль: "+error)
                         .setPositiveButton("Открыть настройки",(d,w)->showSettings())
                         .setNegativeButton("Отмена",null)
