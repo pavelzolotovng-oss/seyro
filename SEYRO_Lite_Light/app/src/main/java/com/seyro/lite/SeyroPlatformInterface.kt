@@ -28,9 +28,9 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
     override fun openTun(options: TunOptions): Int = (vpn as SeyroVpnService).openTunInterface(options)
     override fun useProcFS(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
     override fun findConnectionOwner(ipProtocol: Int, sourceAddress: String, sourcePort: Int, destinationAddress: String, destinationPort: Int): ConnectionOwner = error("Connection owner lookup is not enabled")
-    override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {}
-    override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {}
-    override fun getInterfaces(): NetworkInterfaceIterator = error("Interface enumeration is not enabled")
+    override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) { DebugLog.i(vpn, "NETWORK", "Запрошен монитор интерфейсов sing-box") }
+    override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener) { DebugLog.i(vpn, "NETWORK", "Монитор интерфейсов sing-box остановлен") }
+    override fun getInterfaces(): NetworkInterfaceIterator { DebugLog.e(vpn, "NETWORK", "sing-box запросил список интерфейсов, но Android adapter его не предоставляет"); error("Interface enumeration is not enabled") }
     override fun underNetworkExtension(): Boolean = false
     override fun includeAllNetworks(): Boolean = false
     override fun clearDNSCache() {}
