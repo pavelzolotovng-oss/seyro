@@ -239,6 +239,7 @@ public class MainActivity extends Activity {
         vpnStateReceiverRegistered=true;
         DebugLog.i(this,"APP","VPN state receiver зарегистрирован");
         renderVpnState();
+        runHealthCheckIfNeeded();
     }
 
     @Override protected void onResume() {
