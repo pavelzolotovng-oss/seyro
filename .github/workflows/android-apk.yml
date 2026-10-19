@@ -4,23 +4,33 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "SEYRO_Lite_Light/**"
+      - "SEYRO_Lite_Light/app/**"
+      - "SEYRO_Lite_Light/build.gradle"
+      - "SEYRO_Lite_Light/settings.gradle"
+      - "SEYRO_Lite_Light/gradle.properties"
+      - "SEYRO_Lite_Light/gradle/**"
+      - "SEYRO_Lite_Light/gradlew"
       - ".github/workflows/android-apk.yml"
 
 concurrency:
-  group: seyro-lite-apk-build-v2
+  group: seyro-lite-apk
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
+      - name: Set build metadata
+        id: meta
+        run: echo "version_name=0.9.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -32,18 +42,46 @@ jobs:
           gradle-version: "8.9"
       - name: Install Android SDK packages
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           test -n "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses
           "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-      - name: Build debug APK
+      - name: Configure persistent APK signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository Actions secret: $name"
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > SEYRO_Lite_Light/app/seyro-release.jks
+          test -s SEYRO_Lite_Light/app/seyro-release.jks
+          keytool -list -keystore SEYRO_Lite_Light/app/seyro-release.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" -keypass "$ANDROID_KEY_PASSWORD" >/dev/null
+      - name: Build sing-box APK
         working-directory: SEYRO_Lite_Light
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/SEYRO_Lite_Light/app/seyro-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle --no-daemon assembleDebug
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: seyro-lite-debug-apk
+          name: seyro-lite-apk
           path: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish successful test build
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: seyro-lite-v${{ github.run_number }}
+          name: SEYRO Lite ${{ steps.meta.outputs.version_name }}
+          body: "SEYRO Lite с движком sing-box 1.14.3. Пакет com.seyro.lite. Перед обновлением убедитесь, что текущая установка подписана тем же ключом."
+          prerelease: true
+          files: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
