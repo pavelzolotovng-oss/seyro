@@ -182,7 +182,9 @@ public final class SingBoxConfigBuilder {
         route.put("final", "proxy");
 
         JSONObject root = new JSONObject();
-        root.put("log", new JSONObject().put("level", "info"));
+        // Temporary diagnostic build: expose TUN TCP routing decisions and dial failures.
+        // Restore info after capturing one representative failing connection.
+        root.put("log", new JSONObject().put("level", "debug"));
         root.put("dns", dns);
         JSONArray inbounds = new JSONArray();
         inbounds.put(new JSONObject().put("type", "tun").put("tag", "tun-in")
