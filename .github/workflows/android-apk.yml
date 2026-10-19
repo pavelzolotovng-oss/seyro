@@ -80,8 +80,8 @@ jobs:
       - name: Publish successful test build
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: seyro-lite-v${{ github.run_number }}
-          name: SEYRO Lite ${{ steps.meta.outputs.version_name }}
-          body: "SEYRO Lite с движком sing-box 1.14.3. Пакет com.seyro.lite. Перед обновлением убедитесь, что текущая установка подписана тем же ключом."
+          tag_name: debug-build-${{ github.run_number }}
+          name: SEYRO Lite sing-box ${{ steps.meta.outputs.version_name }}
+          body: "SEYRO Lite — sing-box 1.14.3 only. Package com.seyro.lite.singboxtest, intended to update the installed sing-box test app."
           prerelease: true
           files: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
