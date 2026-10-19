@@ -170,7 +170,7 @@ public final class SingBoxConfigBuilder {
         root.put("inbounds", new JSONArray().put(
             new JSONObject().put("type", "tun").put("tag", "tun-in")
                 .put("interface_name", "seyro").put("address", new JSONArray().put("172.19.0.1/30"))
-                .put("mtu", 1400).put("auto_route", true).put("strict_route", true)
+                .put("mtu", 1380).put("auto_route", true).put("strict_route", true)
         ));
         root.put("outbounds", singOutbounds);
         root.put("route", route);
