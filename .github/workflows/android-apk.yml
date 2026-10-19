@@ -1,16 +1,10 @@
-name: Build SEYRO Lite APK
+name: Build SEYRO
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "SEYRO_Lite_Light/app/**"
-      - "SEYRO_Lite_Light/build.gradle"
-      - "SEYRO_Lite_Light/settings.gradle"
-      - "SEYRO_Lite_Light/gradle.properties"
-      - "SEYRO_Lite_Light/gradle/**"
-      - "SEYRO_Lite_Light/gradlew"
-      - ".github/workflows/android-apk.yml"
+      - "README.md"
 
 concurrency:
   group: seyro-lite-apk
