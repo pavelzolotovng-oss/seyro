@@ -142,23 +142,30 @@ public final class SingBoxConfigBuilder {
         block.put("tag", "block");
         singOutbounds.put(block);
 
-        // Resolve through Cloudflare DoT over the VLESS proxy. A plain UDP DNS
-        // request may be blocked by mobile networks or fail on VLESS transports
-        // that do not carry UDP reliably.
+        // Use Android's resolver for DNS lookups required by outbound connection
+        // setup, while keeping ordinary tunneled client DNS on encrypted DoT
+        // through VLESS. This avoids DNS bootstrap recursion and reduces dependence
+        // on a single remote resolver for internal outbound lookups.
+        JSONObject dnsLocal = new JSONObject();
+        dnsLocal.put("type", "local");
+        dnsLocal.put("tag", "dns-local");
         JSONObject dnsTLS = new JSONObject();
         dnsTLS.put("enabled", true);
         dnsTLS.put("server_name", "cloudflare-dns.com");
-        JSONObject dnsServer = new JSONObject();
-        dnsServer.put("type", "tls");
-        dnsServer.put("tag", "dns-remote");
-        dnsServer.put("server", "1.1.1.1");
-        dnsServer.put("server_port", 853);
-        dnsServer.put("tls", dnsTLS);
-        dnsServer.put("detour", "proxy");
+        JSONObject dnsRemote = new JSONObject();
+        dnsRemote.put("type", "tls");
+        dnsRemote.put("tag", "dns-remote");
+        dnsRemote.put("server", "1.1.1.1");
+        dnsRemote.put("server_port", 853);
+        dnsRemote.put("tls", dnsTLS);
+        dnsRemote.put("detour", "proxy");
         JSONObject dns = new JSONObject();
-        dns.put("servers", new JSONArray().put(dnsServer));
+        dns.put("servers", new JSONArray().put(dnsLocal).put(dnsRemote));
+        dns.put("rules", new JSONArray().put(
+            new JSONObject().put("outbound", "any").put("server", "dns-local")
+        ));
         dns.put("final", "dns-remote");
-        dns.put("strategy", "ipv4_only");
+        dns.put("strategy", "prefer_ipv4");
 
         JSONObject route = new JSONObject();
         route.put("auto_detect_interface", true);

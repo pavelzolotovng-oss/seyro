@@ -144,13 +144,18 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
     }
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        DebugLog.i(vpn, "NETWORK", "Начало startDefaultInterfaceMonitor; SDK=${Build.VERSION.SDK_INT}")
         defaultListener = listener
-        val active = findPhysicalDefaultNetwork()
-        if (active != null) {
-            defaultNetwork.set(active)
-            notifyDefaultInterface(active)
-        }
         try {
+            val active = findPhysicalDefaultNetwork()
+            DebugLog.i(vpn, "NETWORK", "Первичный поиск сети завершён за ${android.os.SystemClock.elapsedRealtime() - startedAt}ms; result=${active ?: "none"}")
+            if (active != null) {
+                defaultNetwork.set(active)
+                notifyDefaultInterface(active)
+            } else {
+                DebugLog.w(vpn, "NETWORK", "Активная физическая сеть пока не найдена; монитор продолжит поиск")
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 connectivity.registerDefaultNetworkCallback(networkCallback)
             } else {
@@ -162,10 +167,12 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
                     networkCallback
                 )
             }
-            DebugLog.i(vpn, "NETWORK", "Монитор сети Android запущен; activeNetwork=${active != null}")
+            DebugLog.i(vpn, "NETWORK", "Монитор сети Android запущен; activeNetwork=${active != null}; elapsed=${android.os.SystemClock.elapsedRealtime() - startedAt}ms")
         } catch (e: Exception) {
-            DebugLog.e(vpn, "NETWORK", "Не удалось запустить монитор сети: ${e.message}")
-            // Enumeration still provides the current usable interfaces.
+            DebugLog.exception(vpn, "NETWORK", "Ошибка startDefaultInterfaceMonitor; elapsed=${android.os.SystemClock.elapsedRealtime() - startedAt}ms", e)
+            // Network monitor failure must not prevent sing-box from trying to open TUN.
+        } catch (e: LinkageError) {
+            DebugLog.exception(vpn, "NETWORK", "Ошибка linkage в startDefaultInterfaceMonitor", e)
         }
     }
 
@@ -184,6 +191,7 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
             return
         }
         try {
+            DebugLog.d(vpn, "NETWORK", "notifyDefaultInterface: начало обработки network=$network")
             val properties = connectivity.getLinkProperties(network)
             val name = properties?.interfaceName
             DebugLog.i(vpn, "NETWORK", "notifyDefaultInterface: network=$network; interface=$name; propertiesPresent=${properties != null}")
@@ -204,17 +212,26 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
             listener.updateDefaultInterface(name, index, expensive, constrained)
             DebugLog.i(vpn, "NETWORK", "Активная сеть sing-box: $name (index=$index)")
         } catch (e: Exception) {
-            DebugLog.e(vpn, "NETWORK", "Ошибка определения активной сети: ${e.message}")
+            DebugLog.exception(vpn, "NETWORK", "Ошибка определения активной сети network=$network", e)
+        } catch (e: LinkageError) {
+            DebugLog.exception(vpn, "NETWORK", "Ошибка native/linkage при определении активной сети network=$network", e)
         }
     }
 
     override fun getInterfaces(): NetworkInterfaceIterator {
         val result = mutableListOf<io.nekohasekai.libbox.NetworkInterface>()
-        val networks = try { connectivity.allNetworks.toList() } catch (_: Exception) { emptyList() }
+        val networks = try { connectivity.allNetworks.toList() } catch (e: Exception) {
+            DebugLog.exception(vpn, "NETWORK", "Не удалось получить ConnectivityManager.allNetworks", e)
+            emptyList()
+        }
         val javaInterfaces = try {
             Collections.list(JavaNetworkInterface.getNetworkInterfaces())
-        } catch (_: Exception) { emptyList() }
+        } catch (e: Exception) {
+            DebugLog.exception(vpn, "NETWORK", "Не удалось перечислить Java NetworkInterface", e)
+            emptyList()
+        }
 
+        DebugLog.i(vpn, "NETWORK", "Начало getInterfaces; androidNetworks=${networks.size}; javaInterfaces=${javaInterfaces.size}")
         for (network in networks) {
             try {
                 val properties = connectivity.getLinkProperties(network) ?: continue
@@ -258,7 +275,9 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
                 result.add(item)
                 DebugLog.d(vpn, "NETWORK", "Интерфейс sing-box: $name; addresses=${physical.interfaceAddresses.size}; dns=${properties.dnsServers.size}")
             } catch (e: Exception) {
-                DebugLog.e(vpn, "NETWORK", "Пропущен интерфейс Android: ${e.message}")
+                DebugLog.exception(vpn, "NETWORK", "Ошибка обработки Android network=$network; интерфейс пропущен", e)
+            } catch (e: LinkageError) {
+                DebugLog.exception(vpn, "NETWORK", "Ошибка native/linkage обработки Android network=$network", e)
             }
         }
 
