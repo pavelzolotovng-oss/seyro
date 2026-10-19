@@ -1447,7 +1447,7 @@ public class MainActivity extends Activity {
             "; announce="+(!subscriptionAnnounce.isEmpty())+"; userinfo="+(userInfo!=null));
     }
 
-    private static final String UPDATE_API = "https://api.github.com/repos/pavelzolotovng-oss/seyro-lite/releases?per_page=1";
+    private static final String UPDATE_API = "https://api.github.com/repos/pavelzolotovng-oss/seyro-lite/releases?per_page=100";
     private volatile boolean updateCheckInProgress = false;
     private boolean pendingInstallAfterPermission = false;
 
@@ -1482,13 +1482,29 @@ public class MainActivity extends Activity {
                         "Пока нет опубликованных сборок. Попробуйте проверить позже."));
                     return;
                 }
-                JSONObject release = releases.getJSONObject(0);
-                if (release.optBoolean("draft", true)) {
+                JSONObject release = null;
+                int remoteCode = -1;
+                for (int i = 0; i < releases.length(); i++) {
+                    JSONObject candidate = releases.optJSONObject(i);
+                    if (candidate == null || candidate.optBoolean("draft", true)) continue;
+                    int candidateCode = parseBuildCode(candidate.optString("tag_name", ""));
+                    if (candidateCode > remoteCode) {
+                        JSONArray candidateAssets = candidate.optJSONArray("assets");
+                        boolean hasApk = false;
+                        if (candidateAssets != null) for (int j = 0; j < candidateAssets.length(); j++) {
+                            JSONObject asset = candidateAssets.optJSONObject(j);
+                            if (asset != null && "app-debug.apk".equals(asset.optString("name"))) {
+                                hasApk = true; break;
+                            }
+                        }
+                        if (hasApk) { release = candidate; remoteCode = candidateCode; }
+                    }
+                }
+                if (release == null) {
                     if (force) runOnUiThread(() -> showSimpleStyledNotice("Обновления",
-                        "Не удалось найти опубликованную сборку. Попробуйте позже."));
+                        "Не удалось найти опубликованную сборку SEYRO Lite. Попробуйте позже."));
                     return;
                 }
-                int remoteCode = parseBuildCode(release.optString("tag_name", ""));
                 if (remoteCode <= BuildConfig.VERSION_CODE) {
                     prefs.edit().putLong("last_update_check_at", System.currentTimeMillis()).apply();
                     if (force) runOnUiThread(() -> showSimpleStyledNotice("Обновлений нет",
