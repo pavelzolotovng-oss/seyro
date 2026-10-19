@@ -1,63 +1,37 @@
-# SEYRO Lite
+# SEYRO
 
-**SEYRO Lite** — Android-клиент для подключения к VPN по подписке. Проект написан на Java и использует Android `VpnService`, Xray и HEV tun2socks для маршрутизации трафика.
+Единый репозиторий двух Android-проектов: **SEYRO Monitor** и **SEYRO Lite** (клиент подключения).
 
-> **Статус:** проект активно развивается. APK из GitHub Releases помечаются как prerelease/test builds. Проверяйте каждую сборку на своём устройстве перед использованием.
+## Структура
 
-## Возможности
+- `SEYRO_Monitor/` — приложение мониторинга серверов.
+- `SEYRO_Lite_Light/` — Android-клиент подключения SEYRO Lite.
+- `.github/workflows/` — автоматизация сборок.
+- `CHANGELOG.md` — история изменений клиента.
 
-- Импорт и локальное хранение ссылки подписки.
-- Профили VLESS + REALITY.
-- Поддержка TCP и XHTTP.
-- Маршрутизация VPN-трафика через HEV tun2socks к локальному SOCKS-входу Xray.
-- Выбор профиля и подключение через системный VPN-интерфейс Android.
-- Диагностический журнал.
-- Проверка новых версий и предложение установить APK из GitHub Releases.
-- Автоматическая сборка и публикация APK через GitHub Actions.
+Работа ведётся непосредственно в основной ветке `main`. Не используем отдельные ветки для разработки.
 
-## Скачать APK
+## SEYRO Lite — VPN-клиент
 
-Откройте **[Releases](https://github.com/pavelzolotovng-oss/seyro-lite/releases)** и выберите последний релиз SEYRO Lite. В разделе **Assets** скачайте `app-debug.apk`.
+Клиент использует **sing-box/libbox 1.14.3** как единственный VPN-движок. Runtime Xray и HEV в этой сборке не используются. Поддерживаемые профили преобразуются в конфигурацию sing-box; неподдерживаемый транспорт должен выдавать понятную ошибку, а не запускать ложное подключение.
 
-Релизы публикуются как **Pre-release**. Android может запросить разрешение на установку приложений из браузера или другого источника. Установка поверх существующей версии возможна, если APK подписан тем же ключом и имеет более высокий `versionCode`.
+- Исходники: `SEYRO_Lite_Light/app/src/main/`
+- Gradle-проект: `SEYRO_Lite_Light/`
+- Сборка: workflow **Build SEYRO Lite APK**
+- Пакет тестового приложения: `com.seyro.lite.singboxtest`
+- Версия APK: `0.9.<номер запуска>`
+- APK публикуется как prerelease `debug-build-<номер>`
 
-## Структура проекта
+[Открыть SEYRO Lite в репозитории](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Lite_Light) · [Сборки и APK](https://github.com/pavelzolotovng-oss/seyro/actions/workflows/android-apk.yml)
 
-- `SEYRO_Lite_Light/` — проект Android Studio/Gradle.
-- `SEYRO_Lite_Light/app/src/main/java/` — исходный Java-код.
-- `SEYRO_Lite_Light/app/src/main/res/` — ресурсы Android.
-- `SEYRO_Lite_Light/app/build.gradle` — конфигурация приложения и версия.
-- `.github/workflows/android-apk.yml` — workflow сборки и публикации APK.
-- `CHANGELOG.md` — журнал изменений.
+> Успешная компиляция подтверждает создание APK, но сама по себе не подтверждает, что VPN пропускает трафик. После изменений транспорта нужно проверить подключение и открытие сайтов на Android-устройстве.
 
-Android-проект остаётся в отдельной папке, чтобы Android Studio могла открыть его как целостный Gradle-проект. Документация находится в корне репозитория.
+## SEYRO Monitor
 
-## Сборка через GitHub Actions
+Исходники мониторинга находятся отдельно от клиента в `SEYRO_Monitor/`, чтобы сборки и изменения приложений не смешивались.
 
-1. Откройте вкладку **Actions**.
-2. Выберите **Build SEYRO Lite APK**.
-3. Нажмите **Run workflow** и выберите ветку.
-4. Дождитесь успешного завершения.
-5. Скачайте APK из **Artifacts** или откройте опубликованный релиз в **Releases**.
+[Открыть SEYRO Monitor в репозитории](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Monitor)
 
-Workflow использует секреты репозитория `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` и `ANDROID_KEY_PASSWORD` для подписи APK. Для установки обновлений необходимо сохранять один и тот же ключ подписи.
+## Подпись и безопасность
 
-## Локальная сборка
-
-Откройте `SEYRO_Lite_Light/` в Android Studio. Для сборки используются JDK 17 и Android SDK 35. Настройте переменные подписи как в GitHub Actions и запустите Gradle-задачу `assembleDebug`. Workflow загружает необходимые AAR-библиотеки Xray и HEV во время сборки.
-
-## Технические сведения
-
-- Язык: Java
-- Application ID: `com.seyro.lite`
-- Минимальная версия Android: Android 10 (API 29)
-- Compile/Target SDK: 35
-- `versionName` и `versionCode` формируются на основе номера запуска GitHub Actions.
-
-## Безопасность
-
-Ссылка подписки может содержать секретные данные. Не публикуйте её в issues, скриншотах, коммитах или диагностических логах. Не добавляйте в репозиторий keystore, пароли, токены или другие секреты.
-
-## Изменения
-
-Смотрите [CHANGELOG.md](CHANGELOG.md) и [историю коммитов](https://github.com/pavelzolotovng-oss/seyro-lite/commits/main).
+Для обновления приложения поверх установленной версии сохраняйте прежний ключ подписи и совместимый package ID. Не коммитьте keystore, пароли, токены или приватные ссылки подписок. Не публикуйте секреты в журналах и скриншотах.
