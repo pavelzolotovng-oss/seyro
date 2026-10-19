@@ -142,14 +142,23 @@ public final class SingBoxConfigBuilder {
         block.put("tag", "block");
         singOutbounds.put(block);
 
+        // Resolve through Cloudflare DoT over the VLESS proxy. A plain UDP DNS
+        // request may be blocked by mobile networks or fail on VLESS transports
+        // that do not carry UDP reliably.
+        JSONObject dnsTLS = new JSONObject();
+        dnsTLS.put("enabled", true);
+        dnsTLS.put("server_name", "cloudflare-dns.com");
         JSONObject dnsServer = new JSONObject();
-        dnsServer.put("type", "udp");
+        dnsServer.put("type", "tls");
         dnsServer.put("tag", "dns-remote");
         dnsServer.put("server", "1.1.1.1");
-        dnsServer.put("server_port", 53);
+        dnsServer.put("server_port", 853);
+        dnsServer.put("tls", dnsTLS);
+        dnsServer.put("detour", "proxy");
         JSONObject dns = new JSONObject();
         dns.put("servers", new JSONArray().put(dnsServer));
         dns.put("final", "dns-remote");
+        dns.put("strategy", "ipv4_only");
 
         JSONObject route = new JSONObject();
         route.put("auto_detect_interface", true);
