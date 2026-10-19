@@ -204,7 +204,6 @@ public class MainActivity extends Activity {
 
         LinearLayout help=card(); help.setElevation(dp(2)); add(root,help,dp(14));
         help.setOnClickListener(v->showHelp());
-        help.addView(text("НУЖНА ПОМОЩЬ?",10,muted,true));
         add(help,text("Поддержка  ›",14,blue,true),7);
 
         TextView footer=text("SEYRO LITE  ·  ВЕРСИЯ "+APP_VERSION,10,0xff93a0b5,true);
