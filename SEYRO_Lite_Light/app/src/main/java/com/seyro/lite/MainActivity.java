@@ -53,6 +53,11 @@ public class MainActivity extends Activity {
     private static final String[] AUTO_TRANSPORT_PRIORITY = {"tcp", "grpc", "ws", "httpupgrade"};
     private static final int AUTO_MAX_ATTEMPTS = 4;
     private boolean handlingAutoFallback=false;
+    private volatile boolean healthCheckInProgress=false;
+    private volatile String healthCheckTransport="";
+    private volatile long lastHealthCheckStartedAt=0L;
+    private static final int HEALTH_CHECK_PORT=2080;
+    private static final int HEALTH_CHECK_TIMEOUT_MS=5000;
     private static class ProfileOption {
         final String label, transport, config;
         ProfileOption(String label,String transport,String config) { this.label=label; this.transport=transport; this.config=config; }
@@ -66,6 +71,7 @@ public class MainActivity extends Activity {
             DebugLog.i(context,"APP","Получено событие VPN state broadcast; action="+intent.getAction()+"; state="+SeyroVpnService.vpnState);
             renderVpnState();
             handleAutoSelectionState();
+            runHealthCheckIfNeeded();
         }
     };
 
@@ -260,7 +266,7 @@ public class MainActivity extends Activity {
         if("connected".equals(state)) {
             status.setText("●  ПОДКЛЮЧЕНО"); status.setTextColor(green);
             connect.setText("Отключиться"); connect.setEnabled(true);
-            hint.setText("Защищённое соединение активно.");
+            hint.setText(healthCheckInProgress ? "Проверяем доступ к интернету через VPN…" : "VPN-туннель запущен; проверяем доступность сайтов.");
             updateProtocolBadge();
         } else if("connecting".equals(state)||"disconnecting".equals(state)) {
             status.setText("●  "+("connecting".equals(state)?"ПОДКЛЮЧАЕМСЯ":"ОТКЛЮЧАЕМСЯ")); status.setTextColor(blue);
@@ -1882,10 +1888,8 @@ public class MainActivity extends Activity {
     private void handleAutoSelectionState() {
         if(!"auto".equals(prefs.getString("selection_mode","auto"))) return;
         if("connected".equals(SeyroVpnService.vpnState)) {
-            // Connected confirms Xray/TUN startup only; transport is saved after a successful probe.
-            autoFallbackProfiles.clear();
-            autoFallbackIndex=0;
-            handlingAutoFallback=false;
+            // Do not treat TUN creation as proof that websites are reachable.
+            // Keep the fallback queue until the real proxied HTTP probe succeeds.
             return;
         }
         if(!"error".equals(SeyroVpnService.vpnState) || handlingAutoFallback
@@ -1911,6 +1915,120 @@ public class MainActivity extends Activity {
                 requestVpnPermissionAndStart();
             }
         },350);
+    }
+
+    private void runHealthCheckIfNeeded() {
+        if (!"connected".equals(SeyroVpnService.vpnState) || healthCheckInProgress) return;
+        final String transport = activeTransport.isEmpty() ? detectTransport(selectedConfig) : activeTransport;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (transport.equals(healthCheckTransport) && now - lastHealthCheckStartedAt < 15000L) return;
+        healthCheckInProgress = true;
+        healthCheckTransport = transport;
+        lastHealthCheckStartedAt = now;
+        SeyroVpnService.lastProbeDelayMs = -1L;
+        DebugLog.i(this, "HEALTH", "Начата проверка реального доступа через локальный SOCKS sing-box; transport=" + transport);
+        if (hint != null) hint.setText("Проверяем доступ к сайтам через VPN…");
+        if (qualityIndicator != null) {
+            qualityIndicator.setText("ПРОВЕРКА ДОСТУПА К САЙТАМ…");
+            qualityIndicator.setTextColor(blue);
+            qualityIndicator.setBackground(shape(paleBlue,dp(40),0));
+        }
+        new Thread(() -> {
+            long started = android.os.SystemClock.elapsedRealtime();
+            String endpoint = "https://www.google.com/generate_204";
+            int responseCode = -1;
+            String failure = "";
+            java.net.HttpURLConnection connection = null;
+            try {
+                java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.SOCKS,
+                    new java.net.InetSocketAddress("127.0.0.1", HEALTH_CHECK_PORT));
+                connection = (java.net.HttpURLConnection) new URL(endpoint).openConnection(proxy);
+                connection.setRequestMethod("HEAD");
+                connection.setConnectTimeout(HEALTH_CHECK_TIMEOUT_MS);
+                connection.setReadTimeout(HEALTH_CHECK_TIMEOUT_MS);
+                connection.setUseCaches(false);
+                connection.setInstanceFollowRedirects(false);
+                responseCode = connection.getResponseCode();
+                if (responseCode < 200 || responseCode >= 400) failure = "HTTP " + responseCode;
+            } catch (Exception e) {
+                failure = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "без подробностей" : e.getMessage());
+                DebugLog.w(this, "HEALTH", "Проба через прокси завершилась ошибкой: " + failure + "\n" + android.util.Log.getStackTraceString(e));
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            long elapsed = android.os.SystemClock.elapsedRealtime() - started;
+            final boolean success = failure.isEmpty();
+            final int code = responseCode;
+            final String reason = failure;
+            runOnUiThread(() -> {
+                healthCheckInProgress = false;
+                if (!"connected".equals(SeyroVpnService.vpnState)) return;
+                if (success) {
+                    SeyroVpnService.lastProbeDelayMs = elapsed;
+                    DebugLog.i(MainActivity.this, "HEALTH", "Проверка через VLESS успешна; HTTP=" + code + "; elapsed=" + elapsed + "ms; transport=" + transport);
+                    prefs.edit().putString("auto_last_success_transport", transport).apply();
+                    autoFallbackProfiles.clear();
+                    autoFallbackIndex = 0;
+                    handlingAutoFallback = false;
+                    if (hint != null) hint.setText("Защищённое соединение активно. Доступ к сайтам подтверждён.");
+                    updateConnectionQuality();
+                    return;
+                }
+                SeyroVpnService.lastProbeDelayMs = -1L;
+                DebugLog.w(MainActivity.this, "HEALTH", "VPN/TUN запущен, но HTTP-проверка через прокси не прошла; elapsed=" + elapsed + "ms; reason=" + reason + "; transport=" + transport);
+                updateConnectionQuality();
+                tryNextProfileAfterHealthFailure(reason);
+            });
+        }, "seyro-health-check").start();
+    }
+
+    private void tryNextProfileAfterHealthFailure(String reason) {
+        boolean auto = "auto".equals(prefs.getString("selection_mode", "auto"));
+        int nextIndex = autoFallbackIndex + 1;
+        while (nextIndex < autoFallbackProfiles.size()
+                && !isHealthCheckSupportedTransport(autoFallbackProfiles.get(nextIndex).transport)) {
+            DebugLog.w(this, "HEALTH", "Пропускаем неподдерживаемый транспорт при failover: " + autoFallbackProfiles.get(nextIndex).transport);
+            nextIndex++;
+        }
+        if (auto && nextIndex < autoFallbackProfiles.size() && nextIndex < AUTO_MAX_ATTEMPTS) {
+            autoFallbackIndex = nextIndex;
+            ProfileOption next = autoFallbackProfiles.get(nextIndex);
+            handlingAutoFallback = true;
+            DebugLog.w(this, "AUTO", "Health-check не пройден; переключение на профиль " + (nextIndex + 1) + "/" + autoFallbackProfiles.size() + ": " + next.transport);
+            if (hint != null) hint.setText("Сайт не отвечает через текущий профиль. Пробуем " + next.transport.toUpperCase(java.util.Locale.ROOT) + "…");
+            selectedConfig = next.config;
+            activeTransport = next.transport;
+            prefs.edit().putString("selected_transport", activeTransport).apply();
+            Intent stop = new Intent(this, SeyroVpnService.class);
+            stop.setAction(SeyroVpnService.ACTION_STOP);
+            try {
+                startService(stop);
+                connect.postDelayed(() -> {
+                    handlingAutoFallback = false;
+                    if ("auto".equals(prefs.getString("selection_mode", "auto"))) requestVpnPermissionAndStart();
+                }, 900);
+            } catch (RuntimeException e) {
+                handlingAutoFallback = false;
+                DebugLog.w(this, "HEALTH", "Не удалось переключить профиль: " + e.getMessage());
+                showHealthCheckFailure(reason);
+            }
+            return;
+        }
+        showHealthCheckFailure(reason);
+    }
+
+    private boolean isHealthCheckSupportedTransport(String transport) {
+        if (transport == null) return false;
+        String t = transport.toLowerCase(java.util.Locale.ROOT);
+        return t.equals("tcp") || t.equals("raw") || t.equals("grpc") || t.equals("ws") || t.equals("httpupgrade");
+    }
+
+    private void showHealthCheckFailure(String reason) {
+        if (hint != null) hint.setText("VPN подключён, но сайты не отвечают через сервер. Проверьте другой сервер или профиль.");
+        DebugLog.w(this, "HEALTH", "Все доступные поддерживаемые профили проверены; последнее состояние=" + reason);
+        showStyledError("VPN подключён, но сайты не отвечают",
+            "Туннель создан, однако проверка через прокси не прошла. Вероятно, сервер не может открыть нужные сайты или сеть ограничивает соединение. Попробуйте другой сервер. Детали сохранены в журнале диагностики.",
+            () -> runHealthCheckIfNeeded());
     }
 
     private void selectProfile(ProfileOption option) {

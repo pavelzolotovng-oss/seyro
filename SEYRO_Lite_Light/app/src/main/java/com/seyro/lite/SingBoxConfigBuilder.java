@@ -169,16 +169,28 @@ public final class SingBoxConfigBuilder {
 
         JSONObject route = new JSONObject();
         route.put("auto_detect_interface", true);
+        route.put("find_process", false);
+        JSONArray routeRules = new JSONArray();
+        routeRules.put(new JSONObject().put("protocol", "dns").put("action", "hijack-dns"));
+        routeRules.put(new JSONObject().put("port", 53).put("action", "hijack-dns"));
+        // Honor Android Private DNS: DoT (TCP/853) uses the physical connection
+        // directly instead of forcing the user's configured resolver through VLESS.
+        routeRules.put(new JSONObject().put("port", 853).put("outbound", "direct"));
+        route.put("rules", routeRules);
         route.put("final", "proxy");
 
         JSONObject root = new JSONObject();
         root.put("log", new JSONObject().put("level", "info"));
         root.put("dns", dns);
-        root.put("inbounds", new JSONArray().put(
-            new JSONObject().put("type", "tun").put("tag", "tun-in")
-                .put("interface_name", "seyro").put("address", new JSONArray().put("172.19.0.1/30"))
-                .put("mtu", 1380).put("auto_route", true).put("strict_route", true)
-        ));
+        JSONArray inbounds = new JSONArray();
+        inbounds.put(new JSONObject().put("type", "tun").put("tag", "tun-in")
+            .put("interface_name", "seyro").put("address", new JSONArray().put("172.19.0.1/30"))
+            .put("mtu", 1380).put("auto_route", true).put("strict_route", true));
+        // Loopback-only SOCKS listener is used solely for a real HTTP health-check
+        // through sing-box's proxy outbound. It is not exposed to the local network.
+        inbounds.put(new JSONObject().put("type", "socks").put("tag", "health-check-in")
+            .put("listen", "127.0.0.1").put("listen_port", 2080));
+        root.put("inbounds", inbounds);
         root.put("outbounds", singOutbounds);
         root.put("route", route);
         return root.toString(2);
