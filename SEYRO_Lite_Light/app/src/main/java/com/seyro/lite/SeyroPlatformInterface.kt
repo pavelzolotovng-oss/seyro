@@ -131,7 +131,17 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
         sourcePort: Int,
         destinationAddress: String,
         destinationPort: Int
-    ): ConnectionOwner = error("Connection owner lookup is not enabled")
+    ): ConnectionOwner {
+        // This client has no per-app/process routing rules. Returning an empty
+        // owner is safer than throwing for every flow and flooding logs; traffic
+        // routing remains governed by the final "proxy" outbound.
+        DebugLog.d(
+            vpn,
+            "PROCESS",
+            "Process owner lookup skipped (no per-app routing): protocol=$ipProtocol; destination=$destinationAddress:$destinationPort"
+        )
+        return ConnectionOwner()
+    }
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
         defaultListener = listener
