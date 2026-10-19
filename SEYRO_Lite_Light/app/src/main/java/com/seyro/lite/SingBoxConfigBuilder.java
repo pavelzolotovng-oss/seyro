@@ -176,6 +176,10 @@ public final class SingBoxConfigBuilder {
         // Honor Android Private DNS: DoT (TCP/853) uses the physical connection
         // directly instead of forcing the user's configured resolver through VLESS.
         routeRules.put(new JSONObject().put("port", 853).put("outbound", "direct"));
+        // Some VLESS endpoints or middleboxes may not carry QUIC/HTTP3 reliably.
+        // Block UDP/443 inside the tunnel so browsers fall back to TCP-based HTTP/2.
+        // Do not route it to "direct": that would bypass the VPN for this traffic.
+        routeRules.put(new JSONObject().put("network", "udp").put("port", 443).put("outbound", "block"));
         route.put("rules", routeRules);
         route.put("final", "proxy");
 
