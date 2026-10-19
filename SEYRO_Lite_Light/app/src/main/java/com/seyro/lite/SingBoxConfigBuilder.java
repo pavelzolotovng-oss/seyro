@@ -189,7 +189,8 @@ public final class SingBoxConfigBuilder {
         JSONArray inbounds = new JSONArray();
         inbounds.put(new JSONObject().put("type", "tun").put("tag", "tun-in")
             .put("interface_name", "seyro").put("address", new JSONArray().put("172.19.0.1/30"))
-            .put("mtu", 1380).put("auto_route", true).put("strict_route", false));
+            .put("mtu", 1380).put("auto_route", true).put("strict_route", false)
+            .put("stack", "gvisor"));
         // Loopback-only SOCKS listener is used solely for a real HTTP health-check
         // through sing-box's proxy outbound. It is not exposed to the local network.
         inbounds.put(new JSONObject().put("type", "socks").put("tag", "health-check-in")
