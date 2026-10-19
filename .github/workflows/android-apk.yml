@@ -1,4 +1,4 @@
-name: Build SEYRO sing-box test APK
+name: Build SEYRO Lite APK
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
       - ".github/workflows/android-apk.yml"
 
 concurrency:
-  group: seyro-sing-box-test-apk
+  group: seyro-lite-apk
   cancel-in-progress: true
 
 permissions:
@@ -73,15 +73,15 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: seyro-sing-box-test-apk
+          name: seyro-lite-apk
           path: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
       - name: Publish successful test build
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: sing-box-test-${{ github.run_number }}
-          name: SEYRO sing-box TEST ${{ steps.meta.outputs.version_name }}
-          body: "Экспериментальная сборка с движком sing-box 1.14.3. Отдельный test package; перед использованием на основном устройстве требуется проверить соединение с реальным сервером."
+          tag_name: seyro-lite-v${{ github.run_number }}
+          name: SEYRO Lite ${{ steps.meta.outputs.version_name }}
+          body: "SEYRO Lite с движком sing-box 1.14.3. Пакет com.seyro.lite. Перед обновлением убедитесь, что текущая установка подписана тем же ключом."
           prerelease: true
           files: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
