@@ -143,9 +143,11 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
             builder.addAddress(address.address(), address.prefix())
         }
         val v6 = options.inet6Address
+        var hasIpv6Address = false
         while (v6.hasNext()) {
             val address = v6.next()
             builder.addAddress(address.address(), address.prefix())
+            hasIpv6Address = true
         }
 
         if (options.autoRoute) {
@@ -154,7 +156,12 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
             // Android's VPN builder receives the default routes; sing-box performs
             // route selection and packet processing inside its TUN inbound.
             builder.addRoute("0.0.0.0", 0)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) builder.addRoute("::", 0)
+            // Do not capture IPv6 traffic unless sing-box configured an IPv6
+            // address on the TUN. A route without an IPv6 TUN address blackholes
+            // IPv6-first connections and can make websites appear unavailable.
+            if (hasIpv6Address && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                builder.addRoute("::", 0)
+            }
         }
         runCatching { builder.addDisallowedApplication(packageName) }
         val pfd = builder.establish() ?: error("Android не создал TUN-интерфейс (VPN-разрешение отсутствует)")
