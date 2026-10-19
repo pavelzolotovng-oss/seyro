@@ -1936,31 +1936,55 @@ public class MainActivity extends Activity {
         }
         new Thread(() -> {
             long started = android.os.SystemClock.elapsedRealtime();
-            String endpoint = "https://www.google.com/generate_204";
             int responseCode = -1;
             String failure = "";
+            boolean regionalControlOk = false;
+            java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.SOCKS,
+                new java.net.InetSocketAddress("127.0.0.1", HEALTH_CHECK_PORT));
             java.net.HttpURLConnection connection = null;
             try {
-                java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.SOCKS,
-                    new java.net.InetSocketAddress("127.0.0.1", HEALTH_CHECK_PORT));
-                connection = (java.net.HttpURLConnection) new URL(endpoint).openConnection(proxy);
-                connection.setRequestMethod("HEAD");
+                // Google is a weak signal for a Russian exit; test the destination users report as unavailable.
+                connection = (java.net.HttpURLConnection) new URL("https://www.facebook.com/favicon.ico").openConnection(proxy);
+                connection.setRequestMethod("GET");
                 connection.setConnectTimeout(HEALTH_CHECK_TIMEOUT_MS);
                 connection.setReadTimeout(HEALTH_CHECK_TIMEOUT_MS);
                 connection.setUseCaches(false);
-                connection.setInstanceFollowRedirects(false);
+                connection.setInstanceFollowRedirects(true);
                 responseCode = connection.getResponseCode();
-                if (responseCode < 200 || responseCode >= 400) failure = "HTTP " + responseCode;
+                if (responseCode < 200 || responseCode >= 400) failure = "Facebook HTTP " + responseCode;
             } catch (Exception e) {
-                failure = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "без подробностей" : e.getMessage());
-                DebugLog.w(this, "HEALTH", "Проба через прокси завершилась ошибкой: " + failure + "\n" + android.util.Log.getStackTraceString(e));
+                failure = "Facebook " + e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "без подробностей" : e.getMessage());
+                DebugLog.w(this, "HEALTH", "Проверка Facebook через прокси завершилась ошибкой: " + failure + "\n" + android.util.Log.getStackTraceString(e));
             } finally {
                 if (connection != null) connection.disconnect();
+            }
+            if (!failure.isEmpty()) {
+                java.net.HttpURLConnection control = null;
+                try {
+                    control = (java.net.HttpURLConnection) new URL("https://yandex.ru/").openConnection(proxy);
+                    control.setRequestMethod("HEAD");
+                    control.setConnectTimeout(3000);
+                    control.setReadTimeout(3000);
+                    control.setUseCaches(false);
+                    control.setInstanceFollowRedirects(true);
+                    int controlCode = control.getResponseCode();
+                    regionalControlOk = controlCode >= 200 && controlCode < 400;
+                    DebugLog.i(this, "HEALTH", "Контрольный сайт yandex.ru: HTTP=" + controlCode + "; reachable=" + regionalControlOk);
+                } catch (Exception e) {
+                    DebugLog.w(this, "HEALTH", "Контрольный сайт yandex.ru недоступен через прокси: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                } finally {
+                    if (control != null) control.disconnect();
+                }
             }
             long elapsed = android.os.SystemClock.elapsedRealtime() - started;
             final boolean success = failure.isEmpty();
             final int code = responseCode;
-            final String reason = failure;
+            String diagnosticReason = failure;
+            if (!failure.isEmpty() && regionalControlOk) {
+                diagnosticReason += "; российский контрольный сайт доступен, а Facebook нет — возможна геоблокировка/ограничение выхода сервера";
+            }
+            final String reason = diagnosticReason;
+            final boolean regionalReachable = regionalControlOk;
             runOnUiThread(() -> {
                 healthCheckInProgress = false;
                 if (!"connected".equals(SeyroVpnService.vpnState)) return;
@@ -1976,7 +2000,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 SeyroVpnService.lastProbeDelayMs = -1L;
-                DebugLog.w(MainActivity.this, "HEALTH", "VPN/TUN запущен, но HTTP-проверка через прокси не прошла; elapsed=" + elapsed + "ms; reason=" + reason + "; transport=" + transport);
+                DebugLog.w(MainActivity.this, "HEALTH", "VPN/TUN запущен, но Facebook-проверка через прокси не прошла; elapsed=" + elapsed + "ms; yandexReachable=" + regionalReachable + "; reason=" + reason + "; transport=" + transport);
                 updateConnectionQuality();
                 tryNextProfileAfterHealthFailure(reason);
             });
@@ -2025,10 +2049,14 @@ public class MainActivity extends Activity {
     }
 
     private void showHealthCheckFailure(String reason) {
-        if (hint != null) hint.setText("VPN подключён, но сайты не отвечают через сервер. Проверьте другой сервер или профиль.");
+        if (hint != null) hint.setText(reason != null && reason.contains("российский контрольный сайт доступен")
+            ? "Сервер доступен, но Facebook не открывается. Попробуйте зарубежный сервер."
+            : "VPN подключён, но проверка сайта не пройдена. Попробуйте другой профиль или сервер.");
         DebugLog.w(this, "HEALTH", "Все доступные поддерживаемые профили проверены; последнее состояние=" + reason);
         showStyledError("VPN подключён, но сайты не отвечают",
-            "Туннель создан, однако проверка через прокси не прошла. Вероятно, сервер не может открыть нужные сайты или сеть ограничивает соединение. Попробуйте другой сервер. Детали сохранены в журнале диагностики.",
+            reason != null && reason.contains("российский контрольный сайт доступен")
+                ? "Контрольный сайт yandex.ru доступен, но Facebook не отвечает через этот выходной сервер. Возможно, действует ограничение на стороне сервера/провайдера. Попробуйте зарубежный сервер (например, Германия, Нидерланды или Финляндия). Детали сохранены в журнале."
+                : "Туннель создан, однако проверка Facebook через прокси не прошла. Это может быть ограничение на стороне сервера, провайдера или сети. Попробуйте другой сервер. Детали сохранены в журнале диагностики.",
             () -> runHealthCheckIfNeeded());
     }
 

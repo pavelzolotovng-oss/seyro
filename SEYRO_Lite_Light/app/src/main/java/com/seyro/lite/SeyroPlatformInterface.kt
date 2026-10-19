@@ -231,7 +231,7 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
             emptyList()
         }
 
-        DebugLog.i(vpn, "NETWORK", "Начало getInterfaces; androidNetworks=${networks.size}; javaInterfaces=${javaInterfaces.size}")
+        DebugLog.i(vpn, "NETWORK", "Начало getInterfaces; androidNetworks=${networks.size}; javaInterfaces=${javaInterfaces.size}; activeNetwork=${connectivity.activeNetwork}")
         for (network in networks) {
             try {
                 val properties = connectivity.getLinkProperties(network) ?: continue
@@ -244,7 +244,8 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
                 val item = io.nekohasekai.libbox.NetworkInterface()
                 item.name = name
                 item.index = physical.index
-                item.mtu = runCatching { physical.mtu }.getOrDefault(1500)
+                val mtu = runCatching { physical.mtu }.getOrDefault(1500)
+                item.mtu = if (mtu > 0) mtu else 1500
                 item.dnsServer = stringIterator(properties.dnsServers.mapNotNull { it.hostAddress })
                 item.gateway = stringIterator(
                     properties.routes
@@ -253,10 +254,16 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
                         .filterNot { it.isAnyLocalAddress }
                         .mapNotNull { it.hostAddress }
                 )
-                item.addresses = stringIterator(physical.interfaceAddresses.mapNotNull { address ->
+                val addressList = physical.interfaceAddresses.mapNotNull { address ->
                     val ip = address.address ?: return@mapNotNull null
+                    if (ip.isAnyLocalAddress || ip.isLoopbackAddress || ip.isLinkLocalAddress) return@mapNotNull null
                     "${ip.hostAddress}/${address.networkPrefixLength}"
-                })
+                }
+                if (addressList.isEmpty()) {
+                    DebugLog.w(vpn, "NETWORK", "Пропущен интерфейс без пригодных IP-адресов: $name; mtu=$mtu; dns=${properties.dnsServers.size}")
+                    continue
+                }
+                item.addresses = stringIterator(addressList)
                 item.type = when {
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> Libbox.InterfaceTypeWIFI
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> Libbox.InterfaceTypeCellular
@@ -273,7 +280,7 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
                 item.flags = flags
                 item.metered = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
                 result.add(item)
-                DebugLog.d(vpn, "NETWORK", "Интерфейс sing-box: $name; addresses=${physical.interfaceAddresses.size}; dns=${properties.dnsServers.size}")
+                DebugLog.i(vpn, "NETWORK", "Интерфейс для sing-box: name=$name; index=${physical.index}; mtu=${item.mtu}; addresses=${addressList.size}; dns=${properties.dnsServers.size}; defaultRoutes=${properties.routes.count { it.destination.prefixLength == 0 }}; wifi=${capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)}; cellular=${capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)}; validated=${capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)}")
             } catch (e: Exception) {
                 DebugLog.exception(vpn, "NETWORK", "Ошибка обработки Android network=$network; интерфейс пропущен", e)
             } catch (e: LinkageError) {
@@ -281,7 +288,7 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
             }
         }
 
-        DebugLog.i(vpn, "NETWORK", "sing-box получил интерфейсов: ${result.size}")
+        DebugLog.i(vpn, "NETWORK", "getInterfaces завершён; sing-box получил интерфейсов: ${result.size}; names=${result.map { it.name }}")
         return object : NetworkInterfaceIterator {
             private val iterator = result.iterator()
             override fun hasNext(): Boolean = iterator.hasNext()
