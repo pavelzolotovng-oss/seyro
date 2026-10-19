@@ -3,11 +3,19 @@ name: Build SEYRO
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     paths:
-      - "README.md"
+      - "SEYRO_Lite_Light/app/**"
+      - "SEYRO_Lite_Light/build.gradle"
+      - "SEYRO_Lite_Light/settings.gradle"
+      - "SEYRO_Lite_Light/gradle.properties"
+      - "SEYRO_Lite_Light/gradle/**"
+      - "SEYRO_Lite_Light/gradlew"
+      - ".github/workflows/android-apk.yml"
 
 concurrency:
-  group: seyro-lite-apk
+  group: seyro-apk-main
   cancel-in-progress: true
 
 permissions:
@@ -21,9 +29,10 @@ jobs:
       - name: Set build metadata
         id: meta
         run: echo "version_name=0.9.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-      - name: Checkout sources
+      - name: Checkout main branch only
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -64,18 +73,21 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle --no-daemon assembleDebug
+      - name: Name official APK
+        run: cp SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk SEYRO_Lite_Light/app/build/outputs/apk/debug/seyro.apk
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: seyro-lite-apk
-          path: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
+          name: seyro-apk
+          path: SEYRO_Lite_Light/app/build/outputs/apk/debug/seyro.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Publish successful test build
+      - name: Publish SEYRO release from main
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: debug-build-${{ github.run_number }}
-          name: SEYRO Lite sing-box ${{ steps.meta.outputs.version_name }}
-          body: "SEYRO Lite — sing-box 1.14.3 only. Package com.seyro.lite.singboxtest, intended to update the installed sing-box test app."
-          prerelease: true
-          files: SEYRO_Lite_Light/app/build/outputs/apk/debug/app-debug.apk
+          tag_name: seyro-v${{ steps.meta.outputs.version_name }}
+          name: SEYRO ${{ steps.meta.outputs.version_name }}
+          body: "SEYRO Android VPN client. sing-box/libbox 1.14.3. Built from the main branch."
+          prerelease: false
+          make_latest: true
+          files: SEYRO_Lite_Light/app/build/outputs/apk/debug/seyro.apk
