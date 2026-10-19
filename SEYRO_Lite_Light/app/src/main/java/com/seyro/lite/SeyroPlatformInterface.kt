@@ -2,8 +2,6 @@ package com.seyro.lite
 
 import android.net.VpnService
 import android.os.Build
-import io.nekohasekai.libbox.AutoRedirectHandler
-import io.nekohasekai.libbox.AutoRedirectSession
 import io.nekohasekai.libbox.BridgeOptions
 import io.nekohasekai.libbox.BridgeSession
 import io.nekohasekai.libbox.ConnectionOwner
@@ -12,6 +10,7 @@ import io.nekohasekai.libbox.LocalDNSTransport
 import io.nekohasekai.libbox.NeighborEntryIterator
 import io.nekohasekai.libbox.NeighborUpdateListener
 import io.nekohasekai.libbox.NetworkInterfaceIterator
+import io.nekohasekai.libbox.Notification
 import io.nekohasekai.libbox.PlatformInterface
 import io.nekohasekai.libbox.PlatformUser
 import io.nekohasekai.libbox.ShellSession
@@ -46,8 +45,8 @@ internal class SeyroPlatformInterface(private val vpn: VpnService) : PlatformInt
     override fun tailscaleHostname(): String = android.os.Build.MODEL ?: "Android"
     override fun usePlatformBridge(): Boolean = false
     override fun createBridge(options: BridgeOptions?): BridgeSession = error("Platform bridge is not supported")
-    override fun usePlatformAutoRedirect(): Boolean = false
-    override fun createAutoRedirect(options: ByteArray?, handler: AutoRedirectHandler?): AutoRedirectSession = error("Platform auto-redirect is not supported")
+    override fun sendNotification(notification: Notification) {}
+    override fun cancelNotification(identifier: String, typeID: Int) {}
     override fun lookupUser(username: String?): PlatformUser = error("Platform user lookup is not supported")
     override fun registerMyInterface(name: String?) {}
     override fun closeNeighborMonitor(listener: NeighborUpdateListener?) {}
