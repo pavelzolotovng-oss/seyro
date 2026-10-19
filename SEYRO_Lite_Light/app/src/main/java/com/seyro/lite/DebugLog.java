@@ -12,14 +12,14 @@ public final class DebugLog {
     private static final String TAG = "SEYRO-DEBUG";
     private static final String PREFS = "seyro_debug_log";
     private static final String KEY = "entries";
-    private static final int MAX_CHARS = 80000;
+    private static final int MAX_CHARS = 250000;
     private static final Object LOCK = new Object();
 
     private DebugLog() {}
 
-    public static void v(Context context, String area, String message) { if (BuildConfig.DEBUG) write(context, "V", area, message, null); }
-    public static void d(Context context, String area, String message) { if (BuildConfig.DEBUG) write(context, "D", area, message, null); }
-    public static void i(Context context, String area, String message) { if (!BuildConfig.DEBUG && !isLifecycleEvent(area, message)) return; write(context, "I", area, message, null); }
+    public static void v(Context context, String area, String message) { write(context, "V", area, message, null); }
+    public static void d(Context context, String area, String message) { write(context, "D", area, message, null); }
+    public static void i(Context context, String area, String message) { write(context, "I", area, message, null); }
     private static boolean isLifecycleEvent(String area, String message) { if ("APP".equals(area) || "SERVICE".equals(area) || "STATE".equals(area)) return true; if (!"VPN".equals(area)) return false; String m=message==null?"":message.toLowerCase(Locale.ROOT); return m.contains("отключение завершено") || m.contains("запущен") || m.contains("ошибка") || m.contains("начинается запуск"); }
     public static void w(Context context, String area, String message) { write(context, "W", area, message, null); }
     public static void e(Context context, String area, String message) { write(context, "E", area, message, null); }
@@ -30,7 +30,7 @@ public final class DebugLog {
         safe = safe.replaceAll("(?i)vless://[^\\s]+", "vless://[REDACTED]")
                    .replaceAll("(?i)(token|authorization|password|uuid|publicKey|privateKey)=?[: ]+[^\\s,;]+", "$1=[REDACTED]");
         String line = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date())
-                + " " + level + "/" + area + ": " + safe;
+                + " " + level + "/" + area + " [" + Thread.currentThread().getName() + "]: " + safe;
         if ("E".equals(level)) Log.e(TAG, line, error);
         else if ("W".equals(level)) Log.w(TAG, line);
         else if ("D".equals(level)) Log.d(TAG, line);
@@ -47,6 +47,14 @@ public final class DebugLog {
                 Log.e(TAG, "Could not persist diagnostic log", e);
             }
         }
+    }
+
+    public static void exception(Context context, String area, String message, Throwable error) {
+        String detail = message == null ? "" : message;
+        if (error != null) {
+            StringBuilder trace = new StringBuilder(detail).append("\n").append(Log.getStackTraceString(error));
+            write(context, "E", area, trace.toString(), error);
+        } else write(context, "E", area, detail, null);
     }
 
     public static String read(Context context) {
