@@ -1,37 +1,44 @@
 # SEYRO
 
-Единый репозиторий двух Android-проектов: **SEYRO Monitor** и **SEYRO Lite** (клиент подключения).
+Единый репозиторий двух Android-проектов: **SEYRO** (VPN-клиент) и **SEYRO Monitor**.
 
-## Структура
+## Основной принцип разработки
 
-- `SEYRO_Monitor/` — приложение мониторинга серверов.
-- `SEYRO_Lite_Light/` — Android-клиент подключения SEYRO Lite.
-- `.github/workflows/` — автоматизация сборок.
-- `CHANGELOG.md` — история изменений клиента.
+- Все изменения клиента и публикация новых APK идут через основную ветку `main`.
+- Workflow всегда собирает именно `main`, в том числе при ручном запуске.
+- Отдельные ветки разработки для дальнейших изменений не используются.
+- Публичное имя VPN-приложения и релизов — **SEYRO**, без пометки TEST.
+- VPN-движок — **sing-box/libbox 1.14.3**. Xray и HEV не используются как runtime-движки.
 
-Работа ведётся непосредственно в основной ветке `main`. Не используем отдельные ветки для разработки.
-
-## SEYRO Lite — VPN-клиент
-
-Клиент использует **sing-box/libbox 1.14.3** как единственный VPN-движок. Runtime Xray и HEV в этой сборке не используются. Поддерживаемые профили преобразуются в конфигурацию sing-box; неподдерживаемый транспорт должен выдавать понятную ошибку, а не запускать ложное подключение.
+## SEYRO — VPN-клиент
 
 - Исходники: `SEYRO_Lite_Light/app/src/main/`
 - Gradle-проект: `SEYRO_Lite_Light/`
-- Сборка: workflow **Build SEYRO Lite APK**
-- Пакет тестового приложения: `com.seyro.lite.singboxtest`
-- Версия APK: `0.9.<номер запуска>`
-- APK публикуется как prerelease `debug-build-<номер>`
+- Workflow: **Build SEYRO**
+- Android Application ID: `com.seyro.lite`
+- Версия APK: `0.9.<номер запуска GitHub Actions>`
+- Официальный релиз: тег `seyro-v0.9.<номер>`, APK `seyro.apk`
+- Автообновление проверяет только релизы этого репозитория с официальным форматом тега и APK.
 
-[Открыть SEYRO Lite в репозитории](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Lite_Light) · [Сборки и APK](https://github.com/pavelzolotovng-oss/seyro/actions/workflows/android-apk.yml)
+[Исходники SEYRO](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Lite_Light) · [Сборка SEYRO](https://github.com/pavelzolotovng-oss/seyro/actions/workflows/android-apk.yml) · [Релизы SEYRO](https://github.com/pavelzolotovng-oss/seyro/releases)
 
-> Успешная компиляция подтверждает создание APK, но сама по себе не подтверждает, что VPN пропускает трафик. После изменений транспорта нужно проверить подключение и открытие сайтов на Android-устройстве.
+> Успешная сборка подтверждает создание APK, но сама по себе не доказывает, что VPN пропускает трафик. После выпуска нужно проверить подключение и открытие сайтов на Android-устройстве.
 
 ## SEYRO Monitor
 
-Исходники мониторинга находятся отдельно от клиента в `SEYRO_Monitor/`, чтобы сборки и изменения приложений не смешивались.
+Мониторинг серверов остаётся отдельным приложением в том же репозитории.
 
-[Открыть SEYRO Monitor в репозитории](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Monitor)
+[Исходники SEYRO Monitor](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Monitor)
 
-## Подпись и безопасность
+## Подпись и обновления
 
-Для обновления приложения поверх установленной версии сохраняйте прежний ключ подписи и совместимый package ID. Не коммитьте keystore, пароли, токены или приватные ссылки подписок. Не публикуйте секреты в журналах и скриншотах.
+Workflow использует постоянный ключ подписи из секретов GitHub Actions:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Для обновления поверх уже установленной версии Android требует тот же Application ID, тот же ключ подписи и более высокий `versionCode`. Переход со старого тестового пакета `com.seyro.lite.singboxtest` на официальный `com.seyro.lite` является новой установкой: удалите старый тестовый клиент и установите официальный APK. Данные приложения между этими пакетами автоматически не переносятся.
+
+Не публикуйте ключ подписи, пароли или приватные ссылки подписки.
