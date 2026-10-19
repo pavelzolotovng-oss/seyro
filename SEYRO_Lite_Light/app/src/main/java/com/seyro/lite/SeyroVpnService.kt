@@ -65,15 +65,23 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        DebugLog.i(this, "SERVICE", "onStartCommand: action=${intent?.action ?: "null"}; flags=$flags; startId=$startId; state=$vpnState; extras=${intent?.extras?.keySet()?.joinToString() ?: "none"}")
         if (intent == null || intent.action == ACTION_STOP) {
             worker.execute { stopRuntime(startId) }
             return START_NOT_STICKY
         }
-        if (intent.action != ACTION_START) return START_NOT_STICKY
-        if (vpnState == "connecting" || vpnState == "connected") return START_NOT_STICKY
+        if (intent.action != ACTION_START) {
+            DebugLog.w(this, "SERVICE", "Неизвестное действие службы: ${intent.action}; запуск пропущен")
+            return START_NOT_STICKY
+        }
+        if (vpnState == "connecting" || vpnState == "connected") {
+            DebugLog.w(this, "SERVICE", "Повторная команда START проигнорирована; state=$vpnState")
+            return START_NOT_STICKY
+        }
 
         val sourceConfig = intent.getStringExtra(EXTRA_CONFIG).orEmpty()
         if (sourceConfig.isBlank()) {
+            DebugLog.e(this, "SERVICE", "Запуск прерван: конфигурация отсутствует или пуста")
             setState("error", "Профиль пустой. Добавьте ссылку подписки.")
             stopSelf(startId)
             return START_NOT_STICKY
@@ -82,6 +90,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
         try {
             startForegroundNotification()
         } catch (e: Exception) {
+            DebugLog.exception(this, "CRASH", "Ошибка startForegroundNotification", e)
             setState("error", "Не удалось запустить VPN-службу: ${e.message ?: e.javaClass.simpleName}")
             stopSelf(startId)
             return START_NOT_STICKY
@@ -94,24 +103,31 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
         DebugLog.i(this, "SERVICE", "Получена команда запуска; transport=${intent.getStringExtra(EXTRA_TRANSPORT).orEmpty()}; configLength=${sourceConfig.length}; activeNetwork=$active; interface=${props?.interfaceName}; capabilities=$caps; validated=${caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)}")
         worker.execute {
             try {
-                DebugLog.i(this, "SERVICE", "Преобразование профиля в конфигурацию sing-box")
+                val configStartedAt = android.os.SystemClock.elapsedRealtime()
+                DebugLog.i(this, "SERVICE", "Этап 1: преобразование профиля в конфигурацию sing-box; sourceLength=${sourceConfig.length}")
                 val singBoxConfig = SingBoxConfigBuilder.fromXrayConfig(sourceConfig)
+                DebugLog.i(this, "SERVICE", "Этап 1 завершён за ${android.os.SystemClock.elapsedRealtime() - configStartedAt}ms; configLength=${singBoxConfig.length}")
                 currentConfig = singBoxConfig
                 val root = JSONObject(singBoxConfig)
                 val inbounds = root.optJSONArray("inbounds")
                 val outbounds = root.optJSONArray("outbounds")
                 DebugLog.i(this, "SERVICE", "Конфигурация собрана: inbounds=${inbounds?.length() ?: 0}; outbounds=${outbounds?.length() ?: 0}; dnsServers=${root.optJSONObject("dns")?.optJSONArray("servers")?.length() ?: 0}")
+                DebugLog.i(this, "SERVICE", "Этап 2: инициализация Libbox")
                 initializeLibbox()
-                DebugLog.i(this, "SERVICE", "Libbox инициализирован; запуск CommandServer")
+                DebugLog.i(this, "SERVICE", "Этап 2 завершён; запуск CommandServer")
                 val server = CommandServer(this, platform)
                 commandServer = server
+                val serverStartedAt = android.os.SystemClock.elapsedRealtime()
                 server.start()
-                DebugLog.i(this, "SERVICE", "CommandServer запущен; передача конфигурации sing-box")
+                DebugLog.i(this, "SERVICE", "Этап 3: CommandServer запущен за ${android.os.SystemClock.elapsedRealtime() - serverStartedAt}ms; передача конфигурации sing-box")
+                val singBoxStartedAt = android.os.SystemClock.elapsedRealtime()
                 server.startOrReloadService(singBoxConfig, OverrideOptions())
+                DebugLog.i(this, "SERVICE", "Этап 4 завершён: startOrReloadService вернулся за ${android.os.SystemClock.elapsedRealtime() - singBoxStartedAt}ms")
                 Log.i(TAG, "sing-box service started")
                 DebugLog.i(this, "SERVICE", "sing-box принял конфигурацию; TUN должен быть создан")
                 setState("connected", "")
             } catch (e: Exception) {
+                DebugLog.exception(this, "CRASH", "Ошибка запуска sing-box на рабочем потоке", e)
                 DebugLog.e(this, "SERVICE", "Ошибка запуска sing-box: ${e.javaClass.simpleName}: ${e.message}")
                 Log.e(TAG, "sing-box start failed", e)
                 runCatching { commandServer?.closeService() }
@@ -128,6 +144,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     }
 
     private fun initializeLibbox() {
+        DebugLog.i(this, "LIBBOX", "Подготовка Libbox: filesDir=${filesDir.absolutePath}; externalFilesAvailable=${getExternalFilesDir(null) != null}; debug=${BuildConfig.DEBUG}; version=${BuildConfig.VERSION_NAME}")
         val base = filesDir
         val work = getExternalFilesDir(null) ?: filesDir
         val temp = cacheDir
@@ -152,7 +169,8 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     }
 
     internal fun openTunInterface(options: TunOptions): Int {
-        DebugLog.i(this, "TUN", "Создание TUN: mtu=${options.mtu}; autoRoute=${options.autoRoute}")
+        DebugLog.i(this, "TUN", "Вызван openTunInterface: mtu=${options.mtu}; autoRoute=${options.autoRoute}; inet4=${options.inet4Address}; inet6=${options.inet6Address}; dns=${options.dnsServerAddress}")
+        DebugLog.i(this, "TUN", "Создание Android Builder для TUN")
         val builder = Builder().setSession("SEYRO sing-box").setMtu(options.mtu)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
 
@@ -184,6 +202,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
         }
         runCatching { builder.addDisallowedApplication(packageName) }
         DebugLog.i(this, "TUN", "Маршруты TUN: IPv4=0.0.0.0/0; IPv6=$hasIpv6Address; DNS настроен sing-box")
+        DebugLog.i(this, "TUN", "Вызов Builder.establish()")
         val pfd = builder.establish() ?: error("Android не создал TUN-интерфейс (VPN-разрешение отсутствует)")
         tunDescriptor?.close()
         tunDescriptor = pfd
@@ -192,6 +211,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     }
 
     private fun startForegroundNotification() {
+        DebugLog.i(this, "SERVICE", "Создание канала уведомлений и запуск foreground service")
         val manager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "SEYRO VPN", NotificationManager.IMPORTANCE_LOW))
@@ -225,6 +245,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     }
 
     private fun stopRuntime(startId: Int = 0) {
+        DebugLog.i(this, "SERVICE", "Остановка runtime: startId=$startId; serverPresent=${commandServer != null}; tunPresent=${tunDescriptor != null}")
         setState("disconnecting", "")
         val server = commandServer
         commandServer = null
@@ -254,6 +275,7 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     }
 
     override fun onRevoke() {
+        DebugLog.w(this, "SERVICE", "Android отозвал VPN-разрешение (onRevoke)")
         worker.execute { stopRuntime() }
         super.onRevoke()
     }
@@ -268,13 +290,24 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
 
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
 
-    override fun serviceStop() { worker.execute { stopRuntime() } }
+    override fun serviceStop() {
+        DebugLog.i(this, "LIBBOX", "CommandServer вызвал serviceStop")
+        worker.execute { stopRuntime() }
+    }
     override fun serviceReload() {
+        DebugLog.i(this, "LIBBOX", "CommandServer вызвал serviceReload; configPresent=${currentConfig.isNotBlank()}")
         val config = currentConfig
-        if (config.isBlank()) return
+        if (config.isBlank()) {
+            DebugLog.w(this, "LIBBOX", "Перезагрузка пропущена: конфигурация пуста")
+            return
+        }
         worker.execute {
             runCatching { commandServer?.startOrReloadService(config, OverrideOptions()) }
-                .onFailure { setState("error", "Не удалось перезапустить sing-box: ${it.message}") }
+                .onSuccess { DebugLog.i(this, "LIBBOX", "Перезагрузка sing-box завершена") }
+                .onFailure {
+                    DebugLog.exception(this, "CRASH", "Ошибка перезагрузки sing-box", it)
+                    setState("error", "Не удалось перезапустить sing-box: ${it.message}")
+                }
         }
     }
     override fun getSystemProxyStatus(): SystemProxyStatus? = null
