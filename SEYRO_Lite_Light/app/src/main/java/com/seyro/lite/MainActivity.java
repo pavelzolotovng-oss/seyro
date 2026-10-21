@@ -836,11 +836,14 @@ public class MainActivity extends Activity {
     }
 
     private void showProfileChoices() {
-        if(!"disconnected".equals(SeyroVpnService.vpnState)) {
-            showSimpleStyledNotice("Сначала отключите VPN",
-                "Выбор транспорта доступен после отключения.");
+        String state=SeyroVpnService.vpnState;
+        if("connecting".equals(state) || "disconnecting".equals(state)) {
+            showSimpleStyledNotice("Подождите завершения операции",
+                "Сейчас VPN подключается или отключается. Повторите выбор через несколько секунд.");
             return;
         }
+        // When connected, allow choosing another profile. The selected profile will
+        // replace the current one and reconnect automatically.
         if(profileLink.isEmpty()) {
             showProfile();
             return;
@@ -934,6 +937,26 @@ public class MainActivity extends Activity {
         updateProtocolBadge();
         if(hint!=null) hint.setText("Выбран профиль: "+option.label+" ("+option.transport.toUpperCase(java.util.Locale.ROOT)+")");
         // The selected transport is shown in the settings card; no extra toast needed.
+
+        if("connected".equals(SeyroVpnService.vpnState)) {
+            DebugLog.i(this,"VPN","Смена транспорта на "+activeTransport+"; автоматическое переподключение");
+            Intent stop=new Intent(this,SeyroVpnService.class);
+            stop.setAction(SeyroVpnService.ACTION_STOP);
+            startService(stop);
+            connect.setEnabled(false);
+            connect.setText("Переключаем профиль…");
+            connect.postDelayed(() -> {
+                connect.setEnabled(true);
+                connect.setText("Подключить");
+                if("disconnected".equals(SeyroVpnService.vpnState)) {
+                    requestVpnPermissionAndStart();
+                } else {
+                    DebugLog.w(this,"VPN","Автопереподключение отложено: состояние="+SeyroVpnService.vpnState);
+                    connect.setText("Подключить");
+                }
+            }, 900);
+            return;
+        }
 
         // Reopen the settings card so the selected transport is visible immediately,
         // without an extra confirmation dialog.
