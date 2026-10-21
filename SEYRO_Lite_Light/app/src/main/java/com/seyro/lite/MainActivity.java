@@ -52,8 +52,8 @@ public class MainActivity extends Activity {
     // Auto mode keeps the remaining subscription profiles as startup-failure fallbacks.
     private java.util.ArrayList<ProfileOption> autoFallbackProfiles=new java.util.ArrayList<>();
     private int autoFallbackIndex=0;
-    private static final String[] AUTO_TRANSPORT_PRIORITY = {"tcp", "grpc", "ws", "httpupgrade"};
-    private static final int AUTO_MAX_ATTEMPTS = 4;
+    private static final String[] AUTO_TRANSPORT_PRIORITY = {"tcp", "grpc", "xhttp", "ws", "httpupgrade"};
+    private static final int AUTO_MAX_ATTEMPTS = 5;
     private boolean handlingAutoFallback=false;
     private volatile boolean healthCheckInProgress=false;
     private volatile String healthCheckTransport="";
@@ -2154,7 +2154,7 @@ public class MainActivity extends Activity {
     private boolean isHealthCheckSupportedTransport(String transport) {
         if (transport == null) return false;
         String t = transport.toLowerCase(java.util.Locale.ROOT);
-        return t.equals("tcp") || t.equals("raw") || t.equals("grpc") || t.equals("ws") || t.equals("httpupgrade");
+        return t.equals("tcp") || t.equals("raw") || t.equals("grpc") || t.equals("xhttp") || t.equals("ws") || t.equals("httpupgrade");
     }
 
     private void showHealthCheckFailure(String reason) {
