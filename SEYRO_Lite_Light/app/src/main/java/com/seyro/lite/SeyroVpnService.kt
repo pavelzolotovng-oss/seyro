@@ -39,7 +39,7 @@ class SeyroVpnService : VpnService() {
     @Volatile private var runtimeStarted = false
 
     private val dialerController = object : DialerController {
-        override fun protectFd(fd: Int): Boolean = this@SeyroVpnService.protect(fd)
+        override fun protectFd(fd: Long): Boolean = this@SeyroVpnService.protect(fd.toInt())
     }
 
     override fun onCreate() {
