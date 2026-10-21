@@ -21,7 +21,6 @@ import java.nio.charset.StandardCharsets;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import android.os.Bundle;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.text.InputType;
