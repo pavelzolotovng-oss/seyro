@@ -40,6 +40,21 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build official XTLS libXray AAR
+        run: |
+          git clone --depth 1 https://github.com/XTLS/libXray.git /tmp/libXray
+          cd /tmp/libXray
+          python3 build/main.py android
+          mkdir -p "$GITHUB_WORKSPACE/SEYRO_Lite_Light/app/libs"
+          cp libXray.aar "$GITHUB_WORKSPACE/SEYRO_Lite_Light/app/libs/libXray.aar"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -66,7 +81,7 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > SEYRO_Lite_Light/app/seyro-release.jks
           test -s SEYRO_Lite_Light/app/seyro-release.jks
           keytool -list -keystore SEYRO_Lite_Light/app/seyro-release.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" -keypass "$ANDROID_KEY_PASSWORD" >/dev/null
-      - name: Build sing-box APK
+      - name: Build Xray-core APK
         working-directory: SEYRO_Lite_Light
         env:
           ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/SEYRO_Lite_Light/app/seyro-release.jks
@@ -88,7 +103,7 @@ jobs:
         with:
           tag_name: seyro-v${{ steps.meta.outputs.version_name }}
           name: SEYRO ${{ steps.meta.outputs.version_name }}
-          body: "SEYRO Android VPN client. sing-box/libbox 1.14.3. Built from the main branch."
+          body: "SEYRO Android VPN client. Official XTLS/libXray with Xray-core. Built from the main branch."
           prerelease: false
           make_latest: true
           files: SEYRO_Lite_Light/app/build/outputs/apk/debug/seyro.apk
