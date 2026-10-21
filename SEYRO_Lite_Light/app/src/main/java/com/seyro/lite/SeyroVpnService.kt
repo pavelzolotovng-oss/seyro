@@ -10,22 +10,13 @@ import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import io.nekohasekai.libbox.CommandServer
-import io.nekohasekai.libbox.CommandServerHandler
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.OverrideOptions
-import io.nekohasekai.libbox.PlatformInterface
-import io.nekohasekai.libbox.SetupOptions
-import io.nekohasekai.libbox.SystemProxyStatus
-import io.nekohasekai.libbox.TunOptions
+import libXray.DialerController
+import libXray.LibXray
 import org.json.JSONObject
-import java.util.Locale
 import java.util.concurrent.Executors
 
-/**
- * SEYRO VPN runtime backed by sing-box/libbox. No Xray or HEV engine is used.
- */
-class SeyroVpnService : VpnService(), CommandServerHandler {
+/** SEYRO VPN runtime backed by official XTLS/libXray (Xray-core). */
+class SeyroVpnService : VpnService() {
     companion object {
         const val ACTION_START = "com.seyro.lite.START_VPN"
         const val ACTION_STOP = "com.seyro.lite.STOP_VPN"
@@ -36,125 +27,84 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
         @JvmField @Volatile var vpnState: String = "disconnected"
         @JvmField @Volatile var lastError: String = ""
         @JvmField @Volatile var lastProbeDelayMs: Long = -1L
-        private const val TAG = "SEYRO-SINGBOX"
+        private const val TAG = "SEYRO-XRAY"
         private const val CHANNEL_ID = "seyro_vpn"
         private const val NOTIFICATION_ID = 1
         @Volatile private var activeInstance: SeyroVpnService? = null
-
-        @JvmStatic fun requestImmediateProbe(reason: String) {
-            // sing-box owns health checking; the old Xray-specific probe is intentionally removed.
-            Log.d(TAG, "Probe request ignored; sing-box runtime manages transport health: $reason")
-        }
+        @JvmStatic fun requestImmediateProbe(reason: String) { Log.d(TAG, "Probe deferred to Xray runtime: " + reason) }
     }
 
     private val worker = Executors.newSingleThreadExecutor()
-    @Volatile private var commandServer: CommandServer? = null
     @Volatile private var tunDescriptor: ParcelFileDescriptor? = null
-    @Volatile private var currentConfig: String = ""
-    private val platform: PlatformInterface by lazy { SeyroPlatformInterface(this) }
+    @Volatile private var runtimeStarted = false
+
+    private val dialerController = object : DialerController {
+        override fun protectFd(fd: Int): Boolean = this@SeyroVpnService.protect(fd)
+    }
 
     override fun onCreate() {
         super.onCreate()
         activeInstance = this
-        DebugLog.i(this, "SERVICE", "VPN service onCreate; Android=${Build.VERSION.RELEASE}; SDK=${Build.VERSION.SDK_INT}; manufacturer=${Build.MANUFACTURER}; model=${Build.MODEL}")
-        runCatching { Libbox.setLocale(Locale.getDefault().toLanguageTag()) }
-            .onFailure {
-                DebugLog.e(this, "SERVICE", "Не удалось установить locale для libbox: ${it.javaClass.simpleName}: ${it.message}")
-                Log.w(TAG, "Could not set sing-box locale", it)
-            }
+        DebugLog.i(this, "SERVICE", "Xray service created; Android=" + Build.VERSION.RELEASE + "; SDK=" + Build.VERSION.SDK_INT)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        DebugLog.i(this, "SERVICE", "onStartCommand: action=${intent?.action ?: "null"}; flags=$flags; startId=$startId; state=$vpnState; extras=${intent?.extras?.keySet()?.joinToString() ?: "none"}")
         if (intent == null || intent.action == ACTION_STOP) {
             worker.execute { stopRuntime(startId) }
             return START_NOT_STICKY
         }
-        if (intent.action != ACTION_START) {
-            DebugLog.w(this, "SERVICE", "Неизвестное действие службы: ${intent.action}; запуск пропущен")
-            return START_NOT_STICKY
-        }
-        if (vpnState == "connecting" || vpnState == "connected") {
-            DebugLog.w(this, "SERVICE", "Повторная команда START проигнорирована; state=$vpnState")
-            return START_NOT_STICKY
-        }
-
+        if (intent.action != ACTION_START) return START_NOT_STICKY
+        if (vpnState == "connecting" || vpnState == "connected") return START_NOT_STICKY
         val sourceConfig = intent.getStringExtra(EXTRA_CONFIG).orEmpty()
         if (sourceConfig.isBlank()) {
-            DebugLog.e(this, "SERVICE", "Запуск прерван: конфигурация отсутствует или пуста")
             setState("error", "Профиль пустой. Добавьте ссылку подписки.")
             stopSelf(startId)
             return START_NOT_STICKY
         }
-
-        try {
-            startForegroundNotification()
-        } catch (e: Exception) {
-            DebugLog.exception(this, "CRASH", "Ошибка startForegroundNotification", e)
-            setState("error", "Не удалось запустить VPN-службу: ${e.message ?: e.javaClass.simpleName}")
+        try { startForegroundNotification() } catch (e: Exception) {
+            setState("error", "Не удалось запустить VPN-службу: " + (e.message ?: e.javaClass.simpleName))
             stopSelf(startId)
             return START_NOT_STICKY
         }
         setState("connecting", "")
-        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        val active = cm.activeNetwork
-        val caps = active?.let { cm.getNetworkCapabilities(it) }
-        val props = active?.let { cm.getLinkProperties(it) }
-        DebugLog.i(this, "SERVICE", "Получена команда запуска; transport=${intent.getStringExtra(EXTRA_TRANSPORT).orEmpty()}; configLength=${sourceConfig.length}; activeNetwork=$active; interface=${props?.interfaceName}; capabilities=$caps; validated=${caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)}")
         worker.execute {
             try {
-                val configStartedAt = android.os.SystemClock.elapsedRealtime()
-                DebugLog.i(this, "SERVICE", "Этап 1: преобразование профиля в конфигурацию sing-box; sourceLength=${sourceConfig.length}")
-                val singBoxConfig = SingBoxConfigBuilder.fromXrayConfig(sourceConfig)
-                DebugLog.i(this, "SERVICE", "Этап 1 завершён за ${android.os.SystemClock.elapsedRealtime() - configStartedAt}ms; configLength=${singBoxConfig.length}")
-                currentConfig = singBoxConfig
-                val root = JSONObject(singBoxConfig)
-                val inbounds = root.optJSONArray("inbounds")
-                val outbounds = root.optJSONArray("outbounds")
-                val route = root.optJSONObject("route")
-                val routeRules = route?.optJSONArray("rules")
-                val outboundSummary = (0 until (outbounds?.length() ?: 0)).mapNotNull { i ->
-                    outbounds?.optJSONObject(i)?.let { "${it.optString("tag")}: ${it.optString("type")}" }
+                val config = JSONObject(sourceConfig)
+                require((config.optJSONArray("outbounds")?.length() ?: 0) > 0) { "В конфигурации Xray нет outbounds" }
+                val builder = Builder().setSession("SEYRO Xray").setMtu(1500)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
+                builder.addAddress("172.19.0.1", 30)
+                builder.addDnsServer("1.1.1.1")
+                builder.addRoute("0.0.0.0", 0)
+                runCatching { builder.addDisallowedApplication(packageName) }
+                val pfd = builder.establish() ?: error("Android не создал TUN-интерфейс")
+                tunDescriptor?.close()
+                tunDescriptor = pfd
+
+                LibXray.registerDialerController(dialerController)
+                LibXray.setDNS(dialerController, "1.1.1.1:53")
+                val env = config.optJSONObject("env") ?: JSONObject().also { config.put("env", it) }
+                val xrayEnv = env.optJSONObject("xray") ?: JSONObject().also { env.put("xray", it) }
+                val tunEnv = xrayEnv.optJSONObject("tun") ?: JSONObject().also { xrayEnv.put("tun", it) }
+                tunEnv.put("fd", pfd.fd)
+                val request = JSONObject().put("apiVersion", 3).put("method", "runXray")
+                    .put("payload", JSONObject().put("xrayJson", config.toString())).toString()
+                val response = JSONObject(LibXray.invoke(request))
+                if (!response.optBoolean("success", false)) error(response.optString("error", "libXray rejected config"))
+                runtimeStarted = true
+                val state = JSONObject(LibXray.invoke(JSONObject().put("apiVersion", 3).put("method", "getXrayState").toString()))
+                if (!state.optBoolean("success", false) || state.optJSONObject("data")?.optBoolean("running", false) != true) {
+                    error("Xray-core did not enter running state")
                 }
-                val ruleSummary = (0 until (routeRules?.length() ?: 0)).mapNotNull { i ->
-                    routeRules?.optJSONObject(i)?.toString()
-                }
-                // Log the exact effective config shape immediately before libbox startup.
-                // Redact VLESS UUID so credentials never enter persistent/logcat diagnostics.
-                val diagnosticConfig = JSONObject(singBoxConfig)
-                val diagnosticOutbounds = diagnosticConfig.optJSONArray("outbounds")
-                for (i in 0 until (diagnosticOutbounds?.length() ?: 0)) {
-                    diagnosticOutbounds?.optJSONObject(i)?.let { outbound ->
-                        if (outbound.optString("type") == "vless") outbound.put("uuid", "<redacted>")
-                    }
-                }
-                DebugLog.i(this, "CONFIG_DUMP", "Effective sing-box config before startOrReloadService (UUID redacted): ${diagnosticConfig}")
-                DebugLog.i(this, "CONFIG_DUMP", "route.final=${route?.optString("final")}; auto_detect_interface=${route?.optBoolean("auto_detect_interface")}; find_process=${route?.optBoolean("find_process")}; rules=$ruleSummary; outbounds=$outboundSummary; tunSniffFieldPresent=${inbounds?.optJSONObject(0)?.has("sniff") == true}")
-                DebugLog.i(this, "SERVICE", "Конфигурация собрана: inbounds=${inbounds?.length() ?: 0}; outbounds=${outbounds?.length() ?: 0}; dnsServers=${root.optJSONObject("dns")?.optJSONArray("servers")?.length() ?: 0}")
-                DebugLog.i(this, "SERVICE", "Этап 2: инициализация Libbox")
-                initializeLibbox()
-                DebugLog.i(this, "SERVICE", "Этап 2 завершён; запуск CommandServer")
-                val server = CommandServer(this, platform)
-                commandServer = server
-                val serverStartedAt = android.os.SystemClock.elapsedRealtime()
-                server.start()
-                DebugLog.i(this, "SERVICE", "Этап 3: CommandServer запущен за ${android.os.SystemClock.elapsedRealtime() - serverStartedAt}ms; передача конфигурации sing-box")
-                val singBoxStartedAt = android.os.SystemClock.elapsedRealtime()
-                server.startOrReloadService(singBoxConfig, OverrideOptions())
-                DebugLog.i(this, "SERVICE", "Этап 4 завершён: startOrReloadService вернулся за ${android.os.SystemClock.elapsedRealtime() - singBoxStartedAt}ms")
-                Log.i(TAG, "sing-box service started")
-                DebugLog.i(this, "SERVICE", "sing-box принял конфигурацию; TUN должен быть создан")
+                DebugLog.i(this, "XRAY", "Xray-core started; tunFd=" + pfd.fd)
                 setState("connected", "")
             } catch (e: Exception) {
-                DebugLog.exception(this, "CRASH", "Ошибка запуска sing-box на рабочем потоке", e)
-                DebugLog.e(this, "SERVICE", "Ошибка запуска sing-box: ${e.javaClass.simpleName}: ${e.message}")
-                Log.e(TAG, "sing-box start failed", e)
-                runCatching { commandServer?.closeService() }
-                runCatching { commandServer?.close() }
-                commandServer = null
+                DebugLog.exception(this, "CRASH", "Xray-core startup failed", e)
+                Log.e(TAG, "Xray-core startup failed", e)
+                stopXrayCore()
                 runCatching { tunDescriptor?.close() }
                 tunDescriptor = null
-                setState("error", "sing-box не запустился: ${e.message ?: e.javaClass.simpleName}")
+                setState("error", "Xray не запустился: " + (e.message ?: e.javaClass.simpleName))
                 stopForegroundCompat()
                 stopSelf(startId)
             }
@@ -162,119 +112,41 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
         return START_NOT_STICKY
     }
 
-    private fun initializeLibbox() {
-        DebugLog.i(this, "LIBBOX", "Подготовка Libbox: filesDir=${filesDir.absolutePath}; externalFilesAvailable=${getExternalFilesDir(null) != null}; debug=${BuildConfig.DEBUG}; version=${BuildConfig.VERSION_NAME}")
-        val base = filesDir
-        val work = getExternalFilesDir(null) ?: filesDir
-        val temp = cacheDir
-        base.mkdirs(); work.mkdirs(); temp.mkdirs()
-        Libbox.setup(SetupOptions().apply {
-            basePath = base.absolutePath
-            workingPath = work.absolutePath
-            tempPath = temp.absolutePath
-            fixAndroidStack = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
-            logMaxLines = 1000
-            debug = BuildConfig.DEBUG
-            crashReportSource = "SEYRO"
-            appVersion = BuildConfig.VERSION_CODE.toString()
-            appMarketingVersion = BuildConfig.VERSION_NAME
-            platformMetadata = JSONObject().apply {
-                put("os", "Android " + Build.VERSION.RELEASE)
-                put("sdk", Build.VERSION.SDK_INT)
-                put("manufacturer", Build.MANUFACTURER)
-                put("model", Build.MODEL)
-            }.toString()
-        })
-    }
-
-    internal fun openTunInterface(options: TunOptions): Int {
-        DebugLog.i(this, "TUN", "Вызван openTunInterface: mtu=${options.mtu}; autoRoute=${options.autoRoute}; inet4=${options.inet4Address}; inet6=${options.inet6Address}; dns=${options.dnsServerAddress}")
-        DebugLog.i(this, "TUN", "Создание Android Builder для TUN")
-        val builder = Builder().setSession("SEYRO sing-box").setMtu(options.mtu)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
-
-        val v4 = options.inet4Address
-        while (v4.hasNext()) {
-            val address = v4.next()
-            builder.addAddress(address.address(), address.prefix())
-        }
-        val v6 = options.inet6Address
-        var hasIpv6Address = false
-        while (v6.hasNext()) {
-            val address = v6.next()
-            builder.addAddress(address.address(), address.prefix())
-            hasIpv6Address = true
-        }
-
-        if (options.autoRoute) {
-            val dns = options.dnsServerAddress
-            while (dns.hasNext()) builder.addDnsServer(dns.next())
-            // Android's VPN builder receives the default routes; sing-box performs
-            // route selection and packet processing inside its TUN inbound.
-            builder.addRoute("0.0.0.0", 0)
-            // Do not capture IPv6 traffic unless sing-box configured an IPv6
-            // address on the TUN. A route without an IPv6 TUN address blackholes
-            // IPv6-first connections and can make websites appear unavailable.
-            if (hasIpv6Address && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                builder.addRoute("::", 0)
-            }
-        }
-        runCatching { builder.addDisallowedApplication(packageName) }
-        DebugLog.i(this, "TUN", "Маршруты TUN: IPv4=0.0.0.0/0; IPv6=$hasIpv6Address; DNS настроен sing-box")
-        DebugLog.i(this, "TUN", "Вызов Builder.establish()")
-        val pfd = builder.establish() ?: error("Android не создал TUN-интерфейс (VPN-разрешение отсутствует)")
-        tunDescriptor?.close()
-        tunDescriptor = pfd
-        DebugLog.i(this, "TUN", "Android TUN создан успешно; fd=${pfd.fd}; activeNetwork=${(getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).activeNetwork}")
-        return pfd.fd
+    private fun stopXrayCore() {
+        if (runtimeStarted) runCatching {
+            LibXray.invoke(JSONObject().put("apiVersion", 3).put("method", "stopXray").toString())
+        }.onFailure { Log.w(TAG, "stopXray failed", it) }
+        runtimeStarted = false
+        runCatching { LibXray.resetDNS() }
     }
 
     private fun startForegroundNotification() {
-        DebugLog.i(this, "SERVICE", "Создание канала уведомлений и запуск foreground service")
         val manager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "SEYRO VPN", NotificationManager.IMPORTANCE_LOW))
         }
-        val pending = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pending = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setContentTitle("SEYRO")
-                .setContentText("Защищённое соединение sing-box")
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .setOngoing(true)
-                .setContentIntent(pending)
-                .build()
+            Notification.Builder(this, CHANNEL_ID).setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setContentTitle("SEYRO").setContentText("Защищённое соединение Xray-core")
+                .setCategory(Notification.CATEGORY_SERVICE).setOngoing(true).setContentIntent(pending).build()
         } else {
             @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setContentTitle("SEYRO")
-                .setContentText("Защищённое соединение sing-box")
-                .setOngoing(true)
-                .setContentIntent(pending)
-                .build()
+            Notification.Builder(this).setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setContentTitle("SEYRO").setContentText("Защищённое соединение Xray-core")
+                .setOngoing(true).setContentIntent(pending).build()
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
-        } else startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(NOTIFICATION_ID, notification,
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+        else startForeground(NOTIFICATION_ID, notification)
     }
 
     private fun stopRuntime(startId: Int = 0) {
-        DebugLog.i(this, "SERVICE", "Остановка runtime: startId=$startId; serverPresent=${commandServer != null}; tunPresent=${tunDescriptor != null}")
         setState("disconnecting", "")
-        val server = commandServer
-        commandServer = null
-        if (server != null) {
-            runCatching { server.closeService() }.onFailure { Log.w(TAG, "closeService failed", it) }
-            runCatching { server.close() }.onFailure { Log.w(TAG, "CommandServer close failed", it) }
-        }
+        stopXrayCore()
         runCatching { tunDescriptor?.close() }
         tunDescriptor = null
-        currentConfig = ""
         setState("disconnected", "")
         stopForegroundCompat()
         if (startId != 0) stopSelf(startId) else stopSelf()
@@ -288,64 +160,17 @@ class SeyroVpnService : VpnService(), CommandServerHandler {
     private fun setState(state: String, error: String) {
         vpnState = state
         lastError = error
-        if (error.isNotBlank()) DebugLog.e(this, "STATE", "VPN state=$state; error=$error")
-        else DebugLog.i(this, "STATE", "VPN state=$state")
+        if (error.isNotBlank()) DebugLog.e(this, "STATE", "VPN state=" + state + "; error=" + error)
+        else DebugLog.i(this, "STATE", "VPN state=" + state)
         sendBroadcast(Intent(ACTION_STATE_CHANGED).setPackage(packageName))
     }
 
-    override fun onRevoke() {
-        DebugLog.w(this, "SERVICE", "Android отозвал VPN-разрешение (onRevoke)")
-        worker.execute { stopRuntime() }
-        super.onRevoke()
-    }
-
+    override fun onRevoke() { worker.execute { stopRuntime() }; super.onRevoke() }
     override fun onDestroy() {
-        DebugLog.w(this, "SERVICE", "VPN service onDestroy; state=$vpnState; lastError=$lastError")
         if (activeInstance === this) activeInstance = null
         worker.execute { stopRuntime() }
         worker.shutdown()
         super.onDestroy()
     }
-
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
-
-    override fun serviceStop() {
-        DebugLog.i(this, "LIBBOX", "CommandServer вызвал serviceStop")
-        worker.execute { stopRuntime() }
-    }
-    override fun serviceReload() {
-        DebugLog.i(this, "LIBBOX", "CommandServer вызвал serviceReload; configPresent=${currentConfig.isNotBlank()}")
-        val config = currentConfig
-        if (config.isBlank()) {
-            DebugLog.w(this, "LIBBOX", "Перезагрузка пропущена: конфигурация пуста")
-            return
-        }
-        worker.execute {
-            runCatching { commandServer?.startOrReloadService(config, OverrideOptions()) }
-                .onSuccess { DebugLog.i(this, "LIBBOX", "Перезагрузка sing-box завершена") }
-                .onFailure {
-                    DebugLog.exception(this, "CRASH", "Ошибка перезагрузки sing-box", it)
-                    setState("error", "Не удалось перезапустить sing-box: ${it.message}")
-                }
-        }
-    }
-    override fun getSystemProxyStatus(): SystemProxyStatus? = null
-    override fun setSystemProxyEnabled(isEnabled: Boolean) {}
-    override fun triggerNativeCrash() { throw RuntimeException("sing-box native crash requested") }
-    override fun writeDebugMessage(message: String?) {
-        val line = message.orEmpty().trim()
-        if (line.isEmpty()) return
-        Log.d(TAG, line)
-        // Keep native sing-box diagnostics in the in-app log as well as Logcat,
-        // so connection failures can be diagnosed without a USB/debugging setup.
-        when {
-            line.contains("error", ignoreCase = true) ||
-                line.contains("failed", ignoreCase = true) ||
-                line.contains("timeout", ignoreCase = true) ||
-                line.contains("refused", ignoreCase = true) ->
-                DebugLog.e(this, "SINGBOX", line.take(1200))
-            else -> DebugLog.d(this, "SINGBOX", line.take(1200))
-        }
-    }
-    override fun connectSSHAgent(): Int = -1
 }
