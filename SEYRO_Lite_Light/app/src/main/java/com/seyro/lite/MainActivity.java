@@ -71,6 +71,8 @@ public class MainActivity extends Activity {
     private static final int NOTIFICATIONS_PERMISSION_REQUEST=72;
     private static final String APP_VERSION=BuildConfig.VERSION_NAME;
     private boolean vpnStateReceiverRegistered=false;
+    private long lastResumeHandledAt=0L;
+    private static final long RESUME_THROTTLE_MS=1000L;
     private AlertDialog settingsDialog;
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) {
@@ -268,8 +270,16 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        long now=android.os.SystemClock.elapsedRealtime();
+        long elapsed=now-lastResumeHandledAt;
+        if(lastResumeHandledAt>0L && elapsed<RESUME_THROTTLE_MS) {
+            DebugLog.d(this,"UI","onResume throttled; dt="+elapsed+"ms");
+            return;
+        }
+        lastResumeHandledAt=now;
         DebugLog.i(this,"APP","MainActivity.onResume; state="+SeyroVpnService.vpnState+"; lastErrorPresent="+(!SeyroVpnService.lastError.isEmpty()));
-        SeyroVpnService.requestImmediateProbe("возврат в приложение / разблокировка экрана");
+        // Keep onResume lightweight. Subscription metadata refresh remains centralized
+        // in refreshSubscriptionMetadataInBackground(), which enforces TTL and backoff.
         if (pendingInstallAfterPermission) {
             pendingInstallAfterPermission = false;
             java.io.File apk = new java.io.File(getCacheDir(), "updates/seyro-lite-update.apk");
