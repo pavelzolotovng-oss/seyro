@@ -58,6 +58,9 @@ public class MainActivity extends Activity {
     private volatile boolean healthCheckInProgress=false;
     private volatile String healthCheckTransport="";
     private volatile long lastHealthCheckStartedAt=0L;
+    private String lastRenderedBroadcastState=null;
+    private static final long HEALTH_CHECK_MIN_INTERVAL_MS=30_000L;
+    private static final long SUBSCRIPTION_CACHE_TTL_MS=60L*60L*1000L;
     private static final int HEALTH_CHECK_PORT=2080;
     private static final int HEALTH_CHECK_TIMEOUT_MS=5000;
     private static class ProfileOption {
@@ -71,7 +74,13 @@ public class MainActivity extends Activity {
     private final BroadcastReceiver vpnStateReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) {
             DebugLog.i(context,"APP","Получено событие VPN state broadcast; action="+intent.getAction()+"; state="+SeyroVpnService.vpnState);
-            renderVpnState();
+            String state=SeyroVpnService.vpnState;
+            if(!state.equals(lastRenderedBroadcastState)) {
+                lastRenderedBroadcastState=state;
+                renderVpnState();
+            } else {
+                DebugLog.d(context,"UI","Повторный broadcast состояния пропущен: "+state);
+            }
             handleAutoSelectionState();
             runHealthCheckIfNeeded();
         }
@@ -240,6 +249,7 @@ public class MainActivity extends Activity {
         else registerReceiver(vpnStateReceiver,filter);
         vpnStateReceiverRegistered=true;
         DebugLog.i(this,"APP","VPN state receiver зарегистрирован");
+        lastRenderedBroadcastState=SeyroVpnService.vpnState;
         renderVpnState();
         runHealthCheckIfNeeded();
     }
@@ -1286,6 +1296,11 @@ public class MainActivity extends Activity {
         long now=System.currentTimeMillis();
         if(link==null || link.trim().isEmpty()) return;
         long retryAt=prefs.getLong(PREF_SUBSCRIPTION_RETRY_AT,0L);
+        long cacheUpdatedAt=prefs.getLong("cached_subscription_updated_at",0L);
+        if(!force && cacheUpdatedAt>0L && now-cacheUpdatedAt<SUBSCRIPTION_CACHE_TTL_MS) {
+            DebugLog.d(this,"SUBSCRIPTION","Пропуск обновления: кэш подписки ещё актуален");
+            return;
+        }
         // Backoff applies only to automatic lifecycle refreshes. An explicit user
         // request from Settings must run immediately, regardless of the automatic retry timer.
         if(!force && now<retryAt) {
@@ -1942,10 +1957,18 @@ public class MainActivity extends Activity {
         if (!"connected".equals(SeyroVpnService.vpnState) || healthCheckInProgress) return;
         final String transport = activeTransport.isEmpty() ? detectTransport(selectedConfig) : activeTransport;
         long now = android.os.SystemClock.elapsedRealtime();
-        if (transport.equals(healthCheckTransport) && now - lastHealthCheckStartedAt < 15000L) return;
+        long wallNow = System.currentTimeMillis();
+        long lastWallCheck = prefs.getLong("health_check_last_at",0L);
+        String lastWallTransport = prefs.getString("health_check_last_transport","");
+        if (transport.equals(lastWallTransport) && wallNow-lastWallCheck < HEALTH_CHECK_MIN_INTERVAL_MS) {
+            DebugLog.d(this,"HEALTH","Проверка пропущена: повторный запуск раньше 30 секунд");
+            return;
+        }
         healthCheckInProgress = true;
         healthCheckTransport = transport;
         lastHealthCheckStartedAt = now;
+        prefs.edit().putLong("health_check_last_at",wallNow)
+            .putString("health_check_last_transport",transport).apply();
         SeyroVpnService.lastProbeDelayMs = -1L;
         DebugLog.i(this, "HEALTH", "Начата проверка реального доступа через системный VPN-маршрут Xray; transport=" + transport);
         if (hint != null) hint.setText("Проверяем доступ к сайтам через VPN…");
