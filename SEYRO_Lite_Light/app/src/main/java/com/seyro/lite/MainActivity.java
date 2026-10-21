@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
         ProfileOption(String label,String transport,String config) { this.label=label; this.transport=transport; this.config=config; }
     }
     private static final int VPN_PERMISSION_REQUEST=71;
+    private static final int NOTIFICATIONS_PERMISSION_REQUEST=72;
     private static final String APP_VERSION=BuildConfig.VERSION_NAME;
     private boolean vpnStateReceiverRegistered=false;
     private AlertDialog settingsDialog;
@@ -235,10 +236,21 @@ public class MainActivity extends Activity {
         TextView footer=text("SEYRO LITE  ·  ВЕРСИЯ "+APP_VERSION,10,0xff93a0b5,true);
         footer.setGravity(Gravity.CENTER); add(root,footer,20);
         setContentView(scroll);
+        requestNotificationPermissionIfNeeded();
         DebugLog.i(this,"APP","UI построен; savedState="+(stateBundle!=null)+"; subscriptionConfigured="+(!profileLink.isEmpty())+"; transportPreference="+activeTransport);
         renderVpnState();
         if(!profileLink.isEmpty()) refreshSubscriptionMetadataInBackground();
         checkForAppUpdate(false);
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                NOTIFICATIONS_PERMISSION_REQUEST);
+        }
     }
 
     @Override protected void onStart() {
