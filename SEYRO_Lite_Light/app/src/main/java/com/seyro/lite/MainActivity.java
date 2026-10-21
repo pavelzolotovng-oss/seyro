@@ -1922,8 +1922,8 @@ public class MainActivity extends Activity {
     private java.util.List<ProfileOption> buildAutoAttemptOrder(
             java.util.ArrayList<ProfileOption> profiles) {
         java.util.LinkedHashSet<String> order = new java.util.LinkedHashSet<>();
-        String saved = prefs.getString("auto_last_success_transport", "");
-        if (!saved.isEmpty()) order.add(saved.toLowerCase(java.util.Locale.ROOT));
+        // Always try TCP first in auto mode; a previously successful transport
+        // must not override the user's explicit priority.
         for (String transport : AUTO_TRANSPORT_PRIORITY) order.add(transport);
         for (ProfileOption option : profiles) {
             if (option.transport != null && !option.transport.isEmpty())
