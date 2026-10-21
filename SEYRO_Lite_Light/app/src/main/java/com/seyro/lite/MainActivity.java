@@ -801,7 +801,11 @@ public class MainActivity extends Activity {
             WindowManager.LayoutParams params=window.getAttributes();
             params.width=getResources().getDisplayMetrics().widthPixels-dp(32);
             params.height=WindowManager.LayoutParams.WRAP_CONTENT;
-            params.gravity=Gravity.CENTER;
+            // Anchor every custom modal to the same vertical position. Centering
+            // each differently-sized dialog makes the whole window appear to jump
+            // when moving between settings, profile picker, and notices.
+            params.gravity=Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+            params.y=dp(72);
             params.dimAmount=dimAmount;
             window.setAttributes(params);
         }
@@ -1340,11 +1344,8 @@ public class MainActivity extends Activity {
                         updateProfileSubscriptionState();
                     });
                     DebugLog.i(this,"SUBSCRIPTION","Кэш подписки обновлён при запуске; HTTP "+code);
-                    if(startupRefreshToastPending) {
-                        startupRefreshToastPending=false;
-                        runOnUiThread(() ->
-                            Toast.makeText(MainActivity.this,"Данные подписки обновлены",Toast.LENGTH_SHORT).show());
-                    }
+                    // Keep background subscription refresh silent to avoid interrupting modal navigation.
+                    startupRefreshToastPending=false;
                 } else if(code==403) {
                     String errorBody="";
                     try(InputStream error=conn.getErrorStream()) {
@@ -1531,7 +1532,7 @@ public class MainActivity extends Activity {
         long last = prefs.getLong("last_update_check_at", 0L);
         if (!force && System.currentTimeMillis() - last < 6L * 60L * 60L * 1000L) return;
         updateCheckInProgress = true;
-        if (force) Toast.makeText(this, "Проверяем обновления SEYRO…", Toast.LENGTH_SHORT).show();
+        // Avoid transient system toasts while a settings dialog is being dismissed.
         new Thread(() -> {
             java.net.HttpURLConnection conn = null;
             try {
