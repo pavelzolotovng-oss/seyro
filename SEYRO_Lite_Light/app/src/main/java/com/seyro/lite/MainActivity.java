@@ -47,6 +47,9 @@ public class MainActivity extends Activity {
     private boolean demoOn=false;
     private String selectedConfig="";
     private java.util.ArrayList<ProfileOption> availableProfiles=new java.util.ArrayList<>();
+    private String profilesCachedForLink="";
+    private long profilesCachedAtMs=0L;
+    private static final long PROFILE_CACHE_TTL_MS=5*60*1000L;
     // Auto mode keeps the remaining subscription profiles as startup-failure fallbacks.
     private java.util.ArrayList<ProfileOption> autoFallbackProfiles=new java.util.ArrayList<>();
     private int autoFallbackIndex=0;
@@ -855,6 +858,14 @@ public class MainActivity extends Activity {
 
     private void loadProfilesForManualChoice() {
         if(profileLink.isEmpty()) { showProfile(); return; }
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(!availableProfiles.isEmpty()
+                && profileLink.equals(profilesCachedForLink)
+                && now-profilesCachedAtMs<PROFILE_CACHE_TTL_MS) {
+            DebugLog.d(this,"PROFILE","Используем кэш профилей подписки; count="+availableProfiles.size());
+            showProfilePicker(new java.util.ArrayList<>(availableProfiles));
+            return;
+        }
         new Thread(() -> {
             java.util.ArrayList<ProfileOption> result=null;
             String problem=null;
@@ -870,7 +881,9 @@ public class MainActivity extends Activity {
                     return;
                 }
                 availableProfiles=loaded;
-                showProfilePicker(loaded);
+                profilesCachedForLink=profileLink;
+                profilesCachedAtMs=android.os.SystemClock.elapsedRealtime();
+                showProfilePicker(new java.util.ArrayList<>(loaded));
             });
         }).start();
     }
