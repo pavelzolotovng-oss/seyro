@@ -325,16 +325,16 @@ public class MainActivity extends Activity {
             qualityIndicator.setText("КАЧЕСТВО СОЕДИНЕНИЯ · ПРОВЕРЯЕМ…");
             qualityIndicator.setTextColor(blue);
             qualityIndicator.setBackground(shape(paleBlue,dp(40),0));
-        } else if(ms<100) {
-            qualityIndicator.setText("● ОТЛИЧНОЕ СОЕДИНЕНИЕ · "+ms+" мс");
+        } else if(ms<300) {
+            qualityIndicator.setText("● ОТЛИЧНО · "+ms+" мс");
             qualityIndicator.setTextColor(green);
             qualityIndicator.setBackground(shape(0xffe4f8f0,dp(40),0));
-        } else if(ms<200) {
-            qualityIndicator.setText("● ХОРОШЕЕ СОЕДИНЕНИЕ · "+ms+" мс");
+        } else if(ms<700) {
+            qualityIndicator.setText("● НОРМАЛЬНО · "+ms+" мс");
             qualityIndicator.setTextColor(0xff9a6a00);
             qualityIndicator.setBackground(shape(0xfffff4d8,dp(40),0));
         } else {
-            qualityIndicator.setText("● ВЫСОКАЯ ЗАДЕРЖКА · "+ms+" мс");
+            qualityIndicator.setText("● БОЛЬШАЯ ЗАДЕРЖКА · "+ms+" мс");
             qualityIndicator.setTextColor(0xffbd4141);
             qualityIndicator.setBackground(shape(0xffffe9e9,dp(40),0));
         }
