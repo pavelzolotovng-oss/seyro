@@ -1920,6 +1920,11 @@ public class MainActivity extends Activity {
             qualityIndicator.setBackground(shape(paleBlue,dp(40),0));
         }
         new Thread(() -> {
+            if (!"connected".equals(SeyroVpnService.vpnState)) {
+                runOnUiThread(() -> healthCheckInProgress = false);
+                DebugLog.d(this, "HEALTH", "Проверка отменена: VPN уже отключён; transport=" + transport);
+                return;
+            }
             long started = android.os.SystemClock.elapsedRealtime();
             int responseCode = -1;
             String failure = "";
@@ -1940,11 +1945,17 @@ public class MainActivity extends Activity {
                 if (responseCode < 200 || responseCode >= 400) failure = "Facebook HTTP " + responseCode;
             } catch (Exception e) {
                 failure = "Facebook " + e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "без подробностей" : e.getMessage());
-                DebugLog.w(this, "HEALTH", "Проверка Facebook через прокси завершилась ошибкой: " + failure + "\n" + android.util.Log.getStackTraceString(e));
+                if ("connected".equals(SeyroVpnService.vpnState)) {
+                    DebugLog.w(this, "HEALTH", "Проверка Facebook через прокси завершилась ошибкой: " + failure + "\n" + android.util.Log.getStackTraceString(e));
+                } else {
+                    DebugLog.d(this, "HEALTH", "Результат Facebook-проверки отброшен: VPN отключён во время запроса");
+                    runOnUiThread(() -> healthCheckInProgress = false);
+                    return;
+                }
             } finally {
                 if (connection != null) connection.disconnect();
             }
-            if (!failure.isEmpty()) {
+            if (!failure.isEmpty() && "connected".equals(SeyroVpnService.vpnState)) {
                 java.net.HttpURLConnection control = null;
                 try {
                     control = (java.net.HttpURLConnection) new URL("https://yandex.ru/").openConnection(proxy);
