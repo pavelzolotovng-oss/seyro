@@ -2219,8 +2219,12 @@ public class MainActivity extends Activity {
         JSONObject direct=new JSONObject().put("tag","direct").put("protocol","freedom");
         JSONObject block=new JSONObject().put("tag","block").put("protocol","blackhole");
         JSONArray outbounds=new JSONArray().put(outbound).put(direct).put(block);
-        JSONObject routing=new JSONObject().put("domainStrategy","AsIs")
-            .put("rules",new JSONArray().put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy")));
+        JSONArray routeRules=new JSONArray()
+            .put(new JSONObject().put("type","field").put("inboundTag",new JSONArray().put("tun-in")).put("outboundTag","proxy"))
+            // Keep a final proxy route for packets if this Xray build omits the
+            // configured inbound tag from a TUN session.
+            .put(new JSONObject().put("type","field").put("outboundTag","proxy"));
+        JSONObject routing=new JSONObject().put("domainStrategy","AsIs").put("rules",routeRules);
         // Xray-core owns Android's VPN TUN descriptor directly via env.xray.tun.fd.
         // Do not use the legacy local SOCKS inbound: no tun2socks engine is bundled.
         JSONObject tunSettings=new JSONObject().put("name","seyro").put("MTU",1500)
