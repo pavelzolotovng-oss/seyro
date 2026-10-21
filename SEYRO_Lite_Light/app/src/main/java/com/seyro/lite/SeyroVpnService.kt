@@ -37,6 +37,7 @@ class SeyroVpnService : VpnService() {
     private val worker = Executors.newSingleThreadExecutor()
     @Volatile private var tunDescriptor: ParcelFileDescriptor? = null
     @Volatile private var runtimeStarted = false
+    @Volatile private var runtimeStopped = true
 
     private val dialerController = object : DialerController {
         override fun protectFd(fd: Long): Boolean = this@SeyroVpnService.protect(fd.toInt())
@@ -61,6 +62,8 @@ class SeyroVpnService : VpnService() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        // Mark this runtime as active before any asynchronous startup/cleanup can race.
+        runtimeStopped = false
         try { startForegroundNotification() } catch (e: Exception) {
             setState("error", "Не удалось запустить VPN-службу: " + (e.message ?: e.javaClass.simpleName))
             stopSelf(startId)
@@ -143,7 +146,16 @@ class SeyroVpnService : VpnService() {
         else startForeground(NOTIFICATION_ID, notification)
     }
 
+    @Synchronized
     private fun stopRuntime(startId: Int = 0) {
+        if (runtimeStopped) {
+            DebugLog.d(this, "STATE", "stopRuntime skipped; runtime already stopped")
+            if (startId != 0) stopSelf(startId)
+            return
+        }
+        // Set the guard before broadcasting state or calling into Xray: onDestroy
+        // may request another stop while cleanup is still in progress.
+        runtimeStopped = true
         setState("disconnecting", "")
         stopXrayCore()
         runCatching { tunDescriptor?.close() }
