@@ -2230,8 +2230,17 @@ public class MainActivity extends Activity {
         // Do not use the legacy local SOCKS inbound: no tun2socks engine is bundled.
         JSONObject tunSettings=new JSONObject().put("name","seyro").put("MTU",1500)
             .put("gateway",new JSONArray().put("172.19.0.1/30"));
-        JSONObject inbound=new JSONObject().put("tag","tun-in").put("protocol","tun").put("settings",tunSettings);
+        JSONObject sniffing=new JSONObject().put("enabled",true)
+            .put("destOverride",new JSONArray().put("http").put("tls").put("quic"));
+        JSONObject inbound=new JSONObject().put("tag","tun-in").put("protocol","tun")
+            .put("settings",tunSettings).put("sniffing",sniffing);
+        // Configure Xray's own resolver explicitly. Android sends DNS requests to
+        // 1.1.1.1 through the TUN; Xray also needs upstream resolvers for domain routing.
+        JSONObject dns=new JSONObject()
+            .put("servers",new JSONArray().put("1.1.1.1").put("8.8.8.8"))
+            .put("queryStrategy","UseIPv4");
         return new JSONObject().put("log",new JSONObject().put("loglevel","debug"))
+            .put("dns",dns)
             .put("stats",new JSONObject())
             .put("policy",new JSONObject()
                 .put("levels",new JSONObject().put("0",new JSONObject().put("statsUserUplink",true).put("statsUserDownlink",true)))
