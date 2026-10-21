@@ -1965,31 +1965,65 @@ public class MainActivity extends Activity {
             int responseCode = -1;
             String failure = "";
             boolean regionalControlOk = false;
-            // Xray-core does not expose the legacy sing-box SOCKS health listener.
-            // Probe through Android's VPN route instead of connecting to localhost:2080.
+            // Проверяем реальные пользовательские сервисы через системный VPN-маршрут.
+            // Для оценки задержки используем самый быстрый успешный ответ, а не сумму трёх запросов.
             java.net.Proxy proxy = java.net.Proxy.NO_PROXY;
-            java.net.HttpURLConnection connection = null;
-            try {
-                // Google is a weak signal for a Russian exit; test the destination users report as unavailable.
-                connection = (java.net.HttpURLConnection) new URL("https://www.facebook.com/favicon.ico").openConnection(proxy);
-                connection.setRequestMethod("GET");
-                connection.setConnectTimeout(HEALTH_CHECK_TIMEOUT_MS);
-                connection.setReadTimeout(HEALTH_CHECK_TIMEOUT_MS);
-                connection.setUseCaches(false);
-                connection.setInstanceFollowRedirects(true);
-                responseCode = connection.getResponseCode();
-                if (responseCode < 200 || responseCode >= 400) failure = "Facebook HTTP " + responseCode;
-            } catch (Exception e) {
-                failure = "Facebook " + e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "без подробностей" : e.getMessage());
-                if ("connected".equals(SeyroVpnService.vpnState)) {
-                    DebugLog.w(this, "HEALTH", "Проверка Facebook через прокси завершилась ошибкой: " + failure + "\n" + android.util.Log.getStackTraceString(e));
-                } else {
-                    DebugLog.d(this, "HEALTH", "Результат Facebook-проверки отброшен: VPN отключён во время запроса");
+            String[] probeNames = {"YouTube", "Instagram", "Facebook"};
+            String[] probeUrls = {
+                "https://www.youtube.com/generate_204",
+                "https://www.instagram.com/favicon.ico",
+                "https://www.facebook.com/favicon.ico"
+            };
+            long fastestSuccessMs = Long.MAX_VALUE;
+            int successfulSites = 0;
+            StringBuilder probeResults = new StringBuilder();
+            for (int i = 0; i < probeUrls.length; i++) {
+                if (!"connected".equals(SeyroVpnService.vpnState)) {
+                    DebugLog.d(this, "HEALTH", "Проверка отменена: VPN отключён во время проверки сайтов");
                     runOnUiThread(() -> healthCheckInProgress = false);
                     return;
                 }
-            } finally {
-                if (connection != null) connection.disconnect();
+                java.net.HttpURLConnection connection = null;
+                long siteStarted = android.os.SystemClock.elapsedRealtime();
+                try {
+                    connection = (java.net.HttpURLConnection) new URL(probeUrls[i]).openConnection(proxy);
+                    connection.setRequestMethod("GET");
+                    connection.setConnectTimeout(HEALTH_CHECK_TIMEOUT_MS);
+                    connection.setReadTimeout(HEALTH_CHECK_TIMEOUT_MS);
+                    connection.setUseCaches(false);
+                    connection.setInstanceFollowRedirects(true);
+                    int siteCode = connection.getResponseCode();
+                    long siteElapsed = android.os.SystemClock.elapsedRealtime() - siteStarted;
+                    boolean siteOk = siteCode >= 200 && siteCode < 400;
+                    DebugLog.i(this, "HEALTH", probeNames[i] + ": HTTP=" + siteCode
+                        + "; elapsed=" + siteElapsed + "ms; reachable=" + siteOk);
+                    if (probeResults.length() > 0) probeResults.append("; ");
+                    probeResults.append(probeNames[i]).append(" HTTP ").append(siteCode);
+                    if (siteOk) {
+                        successfulSites++;
+                        if (siteElapsed < fastestSuccessMs) {
+                            fastestSuccessMs = siteElapsed;
+                            responseCode = siteCode;
+                        }
+                    }
+                } catch (Exception e) {
+                    long siteElapsed = android.os.SystemClock.elapsedRealtime() - siteStarted;
+                    DebugLog.w(this, "HEALTH", probeNames[i] + " недоступен: "
+                        + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "; elapsed=" + siteElapsed + "ms");
+                    if (probeResults.length() > 0) probeResults.append("; ");
+                    probeResults.append(probeNames[i]).append(" ошибка ").append(e.getClass().getSimpleName());
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+            }
+            long elapsed = fastestSuccessMs == Long.MAX_VALUE
+                ? android.os.SystemClock.elapsedRealtime() - started : fastestSuccessMs;
+            if (successfulSites == 0) {
+                failure = "Не ответили YouTube, Instagram и Facebook (" + probeResults + ")";
+            } else {
+                DebugLog.i(this, "HEALTH", "Проверка сервисов: доступно "
+                    + successfulSites + "/3; " + probeResults);
             }
             if (!failure.isEmpty() && "connected".equals(SeyroVpnService.vpnState)) {
                 java.net.HttpURLConnection control = null;
@@ -2009,8 +2043,7 @@ public class MainActivity extends Activity {
                     if (control != null) control.disconnect();
                 }
             }
-            long elapsed = android.os.SystemClock.elapsedRealtime() - started;
-            final boolean success = failure.isEmpty();
+            final boolean success = successfulSites > 0;
             final int code = responseCode;
             String diagnosticReason = failure;
             if (!failure.isEmpty() && regionalControlOk) {
@@ -2033,7 +2066,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 SeyroVpnService.lastProbeDelayMs = -1L;
-                DebugLog.w(MainActivity.this, "HEALTH", "VPN/TUN запущен, но Facebook-проверка через прокси не прошла; elapsed=" + elapsed + "ms; yandexReachable=" + regionalReachable + "; reason=" + reason + "; transport=" + transport);
+                DebugLog.w(MainActivity.this, "HEALTH", "VPN/TUN запущен, но YouTube/Instagram/Facebook недоступны; elapsed=" + elapsed + "ms; yandexReachable=" + regionalReachable + "; reason=" + reason + "; transport=" + transport);
                 updateConnectionQuality();
                 tryNextProfileAfterHealthFailure(reason);
             });
