@@ -801,11 +801,9 @@ public class MainActivity extends Activity {
             WindowManager.LayoutParams params=window.getAttributes();
             params.width=getResources().getDisplayMetrics().widthPixels-dp(32);
             params.height=WindowManager.LayoutParams.WRAP_CONTENT;
-            // Anchor every custom modal to the same vertical position. Centering
-            // each differently-sized dialog makes the whole window appear to jump
-            // when moving between settings, profile picker, and notices.
-            params.gravity=Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-            params.y=dp(72);
+            // Keep normal centered placement; a fixed top offset can make dialogs jump
+            // when system bars, keyboard, or content height change.
+            params.gravity=Gravity.CENTER;
             params.dimAmount=dimAmount;
             window.setAttributes(params);
         }
