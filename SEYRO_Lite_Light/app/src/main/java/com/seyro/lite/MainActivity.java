@@ -894,30 +894,21 @@ public class MainActivity extends Activity {
         AlertDialog dialog=new AlertDialog.Builder(this).setView(box).create();
         String persistedTransport=prefs.getString("selected_transport","");
         for(ProfileOption option:profiles) {
-            boolean unsupported = "xhttp".equalsIgnoreCase(option.transport);
-            // Keep every subscription profile visible. XHTTP is displayed but
-            // disabled until the bundled sing-box runtime can actually run it.
+            // Profiles are executed by Xray-core now; don't disable XHTTP based on
+            // the old sing-box runtime limitation. The actual XHTTP settings from the
+            // subscription are preserved in the outbound and validated at connection time.
             boolean selected=!selectedConfig.isEmpty()
                 ? selectedConfig.equals(option.config)
                 : (!activeTransport.isEmpty() && activeTransport.equalsIgnoreCase(option.transport))
                     || (!persistedTransport.isEmpty() && persistedTransport.equalsIgnoreCase(option.transport));
             String transport=option.transport.toUpperCase(java.util.Locale.ROOT);
-            String description = unsupported
-                ? "XHTTP · пока не поддерживается текущей версией sing-box"
-                : transport+(selected?" · выбран":"");
-            LinearLayout item=rowCard(option.label,description,
-                unsupported?"!":(selected?"✓":"›"),selected && !unsupported);
+            String description=transport+(selected?" · выбран":"");
+            LinearLayout item=rowCard(option.label,description,selected?"✓":"›",selected);
             add(list,item,dp(7));
-            if(unsupported) {
-                item.setAlpha(0.62f);
-                item.setOnClickListener(v->showSimpleStyledNotice("Профиль XHTTP пока недоступен",
-                    "Подписка содержит этот профиль, но текущий движок SEYRO на sing-box не умеет запускать его. Выберите TCP; поддержку XHTTP нужно добавить отдельно."));
-            } else {
-                item.setOnClickListener(v->{
-                    dialog.dismiss();
-                    selectProfileWithoutStarting(option);
-                });
-            }
+            item.setOnClickListener(v->{
+                dialog.dismiss();
+                selectProfileWithoutStarting(option);
+            });
         }
         LinearLayout buttons=new LinearLayout(this);
         buttons.setGravity(Gravity.CENTER);
@@ -1789,15 +1780,9 @@ public class MainActivity extends Activity {
                     if(error==null && loaded!=null) {
                         availableProfiles=loaded;
                         for(ProfileOption option:loaded) {
-                            // XHTTP is parsed from subscriptions but is not supported by
-                            // the bundled sing-box runtime. Recover old saved XHTTP choices
-                            // to a supported TCP profile instead of repeatedly failing.
-                            boolean savedTransportUnsupported = "xhttp".equalsIgnoreCase(savedTransport);
-                            if(savedTransport.equalsIgnoreCase(option.transport)
-                                    || (savedTransportUnsupported && "tcp".equalsIgnoreCase(option.transport))) {
-                                if(savedTransportUnsupported) {
-                                    DebugLog.w(this,"PROFILE","Сохранённый XHTTP не поддерживается sing-box; автоматически выбран TCP");
-                                }
+                            // Keep the saved transport when it exists in the subscription.
+                            // XHTTP is supported by the migrated Xray-core runtime.
+                            if(savedTransport.equalsIgnoreCase(option.transport)) {
                                 selectProfile(option);
                                 return;
                             }
