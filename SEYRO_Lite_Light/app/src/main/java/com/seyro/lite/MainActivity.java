@@ -1927,7 +1927,7 @@ public class MainActivity extends Activity {
         healthCheckTransport = transport;
         lastHealthCheckStartedAt = now;
         SeyroVpnService.lastProbeDelayMs = -1L;
-        DebugLog.i(this, "HEALTH", "Начата проверка реального доступа через локальный SOCKS sing-box; transport=" + transport);
+        DebugLog.i(this, "HEALTH", "Начата проверка реального доступа через системный VPN-маршрут Xray; transport=" + transport);
         if (hint != null) hint.setText("Проверяем доступ к сайтам через VPN…");
         if (qualityIndicator != null) {
             qualityIndicator.setText("ПРОВЕРКА ДОСТУПА К САЙТАМ…");
@@ -1939,8 +1939,9 @@ public class MainActivity extends Activity {
             int responseCode = -1;
             String failure = "";
             boolean regionalControlOk = false;
-            java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.SOCKS,
-                new java.net.InetSocketAddress("127.0.0.1", HEALTH_CHECK_PORT));
+            // Xray-core does not expose the legacy sing-box SOCKS health listener.
+            // Probe through Android's VPN route instead of connecting to localhost:2080.
+            java.net.Proxy proxy = java.net.Proxy.NO_PROXY;
             java.net.HttpURLConnection connection = null;
             try {
                 // Google is a weak signal for a Russian exit; test the destination users report as unavailable.
