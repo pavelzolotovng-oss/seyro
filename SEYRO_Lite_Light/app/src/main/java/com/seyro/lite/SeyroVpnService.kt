@@ -83,10 +83,12 @@ class SeyroVpnService : VpnService() {
 
                 LibXray.registerDialerController(dialerController)
                 LibXray.setDNS(dialerController, "1.1.1.1:53")
+                // Xray-core's env.xray field is a string, not a JSON object.
+                // Encode the nested runtime options as JSON text to preserve the
+                // xray.tun.fd setting without breaking Xray's config decoder.
                 val env = config.optJSONObject("env") ?: JSONObject().also { config.put("env", it) }
-                val xrayEnv = env.optJSONObject("xray") ?: JSONObject().also { env.put("xray", it) }
-                val tunEnv = xrayEnv.optJSONObject("tun") ?: JSONObject().also { xrayEnv.put("tun", it) }
-                tunEnv.put("fd", pfd.fd)
+                val xrayEnv = JSONObject().put("tun", JSONObject().put("fd", pfd.fd))
+                env.put("xray", xrayEnv.toString())
                 val request = JSONObject().put("apiVersion", 3).put("method", "runXray")
                     .put("payload", JSONObject().put("xrayJson", config.toString())).toString()
                 val response = JSONObject(LibXray.invoke(request))
