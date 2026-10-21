@@ -76,7 +76,8 @@ class SeyroVpnService : VpnService() {
                 builder.addAddress("172.19.0.1", 30)
                 builder.addDnsServer("1.1.1.1")
                 builder.addRoute("0.0.0.0", 0)
-                runCatching { builder.addDisallowedApplication(packageName) }
+                // Keep the app inside the VPN so its health probe uses the same tunnel as user traffic.
+
                 val pfd = builder.establish() ?: error("Android не создал TUN-интерфейс")
                 tunDescriptor?.close()
                 tunDescriptor = pfd
