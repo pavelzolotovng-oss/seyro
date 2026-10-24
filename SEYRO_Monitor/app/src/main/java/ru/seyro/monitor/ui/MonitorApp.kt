@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,6 +43,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -51,7 +54,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import ru.seyro.monitor.BuildConfig
 import ru.seyro.monitor.data.MonitorApi
 import ru.seyro.monitor.data.MonitorConfig
@@ -83,6 +85,7 @@ fun MonitorApp() {
     var selectedNode by remember { mutableStateOf<MonitorNode?>(null) }
     var detailNode by remember { mutableStateOf<MonitorNode?>(null) }
     var snapshot by remember { mutableStateOf<MonitorSnapshot?>(null) }
+    var metricHistory by remember { mutableStateOf<Map<String, List<NodeMetrics>>>(emptyMap()) }
     var loading by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<String?>(null) }
 
@@ -101,7 +104,11 @@ fun MonitorApp() {
         try {
             when (screen) {
                 Screen.OVERVIEW -> snapshot = api.load(config)
-                Screen.NODE_DETAIL -> selectedNode?.let { detailNode = api.loadNode(config, it.role, it.id) }
+                Screen.NODE_DETAIL -> selectedNode?.let { node ->
+                    val updated = api.loadNode(config, node.role, node.id)
+                    detailNode = updated
+                    metricHistory = appendSample(metricHistory, nodeHistoryKey(node), updated.metrics)
+                }
                 Screen.SETTINGS -> Unit
             }
         } catch (error: Exception) {
@@ -152,16 +159,17 @@ fun MonitorApp() {
                 onSelectNode = { node ->
                     selectedNode = node
                     detailNode = node
+                    metricHistory = appendSample(metricHistory, nodeHistoryKey(node), node.metrics)
                     screen = Screen.NODE_DETAIL
                 }
             )
             Screen.NODE_DETAIL -> NodeDetail(
                 modifier = Modifier.padding(padding),
                 node = detailNode,
+                history = selectedNode?.let { metricHistory[nodeHistoryKey(it)] }.orEmpty(),
                 loading = loading,
                 error = connectionError,
-                onBack = { screen = Screen.OVERVIEW },
-                onRefresh = { scope.launch { refreshCurrent() } }
+                onBack = { screen = Screen.OVERVIEW }
             )
             Screen.SETTINGS -> Settings(
                 modifier = Modifier.padding(padding),
@@ -378,13 +386,19 @@ private fun fraction(used: Long, total: Long): Float? = if (total > 0) used.toFl
 private fun NodeDetail(
     modifier: Modifier,
     node: MonitorNode?,
+    history: List<NodeMetrics>,
     loading: Boolean,
     error: String?,
-    onBack: () -> Unit,
-    onRefresh: () -> Unit
+    onBack: () -> Unit
 ) {
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Button(onClick = onBack) { Text("← К серверам") } }
+        item {
+            Button(
+                onClick = onBack,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) { Text("←  К серверам", color = MaterialTheme.colorScheme.onSurface) }
+        }
         if (node == null) {
             item { Text(error ?: if (loading) "Загрузка узла…" else "Не удалось загрузить узел") }
         } else {
@@ -403,11 +417,116 @@ private fun NodeDetail(
                 }
             }
             item { MetricsPanel(node.metrics, node.metricsAvailable, node.metricsStale) }
-            item { Text("Данные узла обновляются автоматически каждые 15 секунд.", style = MaterialTheme.typography.bodySmall) }
-            item { Button(onClick = onRefresh, enabled = !loading) { Text(if (loading) "Обновляем…" else "Обновить") } }
+            item { MetricHistory(history) }
+            item {
+                Text(
+                    if (loading) "Получаем свежий замер…" else "Автообновление · каждые 15 секунд",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             if (error != null) item { Text(error, color = MaterialTheme.colorScheme.error) }
         }
     }
+}
+
+private data class ChartLine(val name: String, val color: Color, val values: List<Float>)
+
+@Composable
+private fun MetricHistory(history: List<NodeMetrics>) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("ИСТОРИЯ ПОКАЗАТЕЛЕЙ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text("Последние замеры", style = MaterialTheme.typography.titleLarge)
+        }
+        if (history.isEmpty()) {
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Text("История появится после первого замера от сервера.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            return
+        }
+
+        val cpu = history.mapNotNull { it.cpuPercent?.toFloat() }
+        val ram = history.map { fraction(it.ramUsedBytes, it.ramTotalBytes)?.times(100f) ?: 0f }
+        val disk = history.map { fraction(it.diskUsedBytes, it.diskTotalBytes)?.times(100f) ?: 0f }
+        val rx = history.mapNotNull { it.networkRxBytesPerSec?.toFloat()?.div(1_048_576f) }
+        val tx = history.mapNotNull { it.networkTxBytesPerSec?.toFloat()?.div(1_048_576f) }
+
+        HistoryChart("CPU", listOf(ChartLine("Загрузка", Color(0xFF72E5C2), cpu)), "%", fixedMax = 100f)
+        HistoryChart(
+            "Память и диск",
+            listOf(ChartLine("RAM", Color(0xFF79BFFF), ram), ChartLine("Диск", Color(0xFFB6A0FF), disk)),
+            "%",
+            fixedMax = 100f
+        )
+        HistoryChart(
+            "Сеть",
+            listOf(ChartLine("↓ Вход", Color(0xFF72E5C2), rx), ChartLine("↑ Выход", Color(0xFFFFB86B), tx)),
+            "МБ/с"
+        )
+        Text(
+            "${prettyTime(history.first().sampledAt)}  →  ${prettyTime(history.last().sampledAt)} · ${history.size} замеров",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun HistoryChart(title: String, lines: List<ChartLine>, unit: String, fixedMax: Float? = null) {
+    val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.48f)
+    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Canvas(Modifier.fillMaxWidth().height(112.dp)) {
+                val gridStroke = 1.dp.toPx()
+                for (index in 0..3) {
+                    val y = size.height * index / 3f
+                    drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), gridStroke)
+                }
+                val allValues = lines.flatMap { it.values }
+                val maxValue = fixedMax ?: ((allValues.maxOrNull() ?: 0.01f) * 1.15f).coerceAtLeast(0.01f)
+                lines.forEach { line ->
+                    if (line.values.isEmpty()) return@forEach
+                    val path = Path()
+                    line.values.forEachIndexed { index, value ->
+                        val x = if (line.values.size == 1) size.width / 2f else size.width * index / (line.values.lastIndex.toFloat())
+                        val y = size.height - (value / maxValue).coerceIn(0f, 1f) * size.height
+                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    if (line.values.size == 1) {
+                        val y = size.height - (line.values.first() / maxValue).coerceIn(0f, 1f) * size.height
+                        drawCircle(line.color, radius = 4.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width / 2f, y))
+                    } else {
+                        drawPath(path, line.color, style = Stroke(width = 3.dp.toPx()))
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
+                lines.forEach { line ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Box(Modifier.size(7.dp).background(line.color, RoundedCornerShape(50)))
+                        Text(line.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (lines.all { it.values.size < 2 }) {
+                Text("Для линии графика ждём следующий замер.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+private fun nodeHistoryKey(node: MonitorNode): String = "${node.role}-${node.id}"
+
+private fun appendSample(history: Map<String, List<NodeMetrics>>, key: String, sample: NodeMetrics?): Map<String, List<NodeMetrics>> {
+    if (sample == null) return history
+    val samples = history[key].orEmpty()
+    if (samples.lastOrNull()?.sampledAt == sample.sampledAt) return history
+    return history + (key to (samples + sample).takeLast(60))
 }
 
 @Composable
