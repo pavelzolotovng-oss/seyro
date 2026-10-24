@@ -33,10 +33,10 @@ jobs:
 
       - name: Validate tag and signing secrets
         env:
-          KEYSTORE: ${{ secrets.SEYRO_MONITOR_KEYSTORE_BASE64 }}
-          STORE_PASSWORD: ${{ secrets.SEYRO_MONITOR_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.SEYRO_MONITOR_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.SEYRO_MONITOR_KEY_PASSWORD }}
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           VERSION_NAME=$(sed -n "s/.*versionName '\(.*\)'/\1/p" app/build.gradle)
           VERSION_CODE=$(sed -n 's/.*versionCode \([0-9]*\)/\1/p' app/build.gradle)
@@ -50,13 +50,21 @@ jobs:
 
       - name: Build signed release APK
         env:
-          SEYRO_MONITOR_KEYSTORE_BASE64: ${{ secrets.SEYRO_MONITOR_KEYSTORE_BASE64 }}
-          SEYRO_MONITOR_KEYSTORE_PASSWORD: ${{ secrets.SEYRO_MONITOR_KEYSTORE_PASSWORD }}
-          SEYRO_MONITOR_KEY_ALIAS: ${{ secrets.SEYRO_MONITOR_KEY_ALIAS }}
-          SEYRO_MONITOR_KEY_PASSWORD: ${{ secrets.SEYRO_MONITOR_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          printf '%s' "$SEYRO_MONITOR_KEYSTORE_BASE64" | base64 --decode > app/seyro-monitor-release.jks
-          export SEYRO_MONITOR_KEYSTORE_PATH="$PWD/app/seyro-monitor-release.jks"
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            test -n "${!name}" || { echo "::error::Missing repository Actions secret: $name"; exit 1; }
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/seyro-release.jks
+          test -s app/seyro-release.jks
+          keytool -list -keystore app/seyro-release.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" -keypass "$ANDROID_KEY_PASSWORD" >/dev/null
+          export SEYRO_MONITOR_KEYSTORE_PATH="$PWD/app/seyro-release.jks"
+          export SEYRO_MONITOR_KEYSTORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+          export SEYRO_MONITOR_KEY_ALIAS="$ANDROID_KEY_ALIAS"
+          export SEYRO_MONITOR_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
           gradle --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk seyro-monitor.apk
           sha256sum seyro-monitor.apk | awk '{print $1}' > seyro-monitor.apk.sha256
