@@ -1,24 +1,33 @@
 package ru.seyro.monitor.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -32,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -111,9 +121,10 @@ fun MonitorApp() {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = { AppBar() },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 NavigationBarItem(
                     selected = screen == Screen.OVERVIEW || screen == Screen.NODE_DETAIL,
                     onClick = { screen = Screen.OVERVIEW },
@@ -170,9 +181,15 @@ fun MonitorApp() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppBar() = TopAppBar(title = {
-    Column {
-        Text("SEYRO Monitor")
-        Text("Статусы серверов · только чтение", style = MaterialTheme.typography.labelSmall)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier.size(40.dp).background(Color(0xFF143A35), RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center
+        ) { Text("S", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge) }
+        Column {
+            Text("SEYRO", style = MaterialTheme.typography.titleMedium)
+            Text("MONITORING CONSOLE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 })
 
@@ -189,14 +206,15 @@ private fun Overview(
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         if (snapshot == null) {
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(24.dp)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(if (configured) "Нет данных от сервера" else "Подключите SEYRO API", style = MaterialTheme.typography.titleMedium)
+                        Text(if (configured) "СВЯЗЬ НЕ УСТАНОВЛЕНА" else "ДОБРО ПОЖАЛОВАТЬ В SEYRO", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(if (configured) "Нет данных от сервера" else "Подключите мониторинг", style = MaterialTheme.typography.headlineSmall)
                         Text(error ?: "Адрес сервера уже указан. Введите выпущенный monitor-token в разделе «Доступ».")
                         if (!configured) Button(onClick = onOpenSettings) { Text("Настроить доступ") }
                         else Button(onClick = onRefresh, enabled = !loading) { Text(if (loading) "Подключаемся…" else "Повторить") }
@@ -208,31 +226,52 @@ private fun Overview(
 
         val overview = snapshot.overview
         item {
-            Card {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Состояние инфраструктуры", style = MaterialTheme.typography.titleMedium)
-                    Text("Узлов: ${overview.nodesTotal} · онлайн: ${overview.nodesOnline}")
-                    Text("Офлайн: ${overview.nodesOffline} · Xray остановлен: ${overview.nodesXrayStopped}")
-                    Text("Неизвестно: ${overview.nodesUnknown} · ожидают синхронизации: ${overview.syncPendingNodes}")
-                    Text("IN активно: ${overview.activeInNodes} · OUT активно: ${overview.activeOutNodes}")
+            Card(
+                shape = RoundedCornerShape(26.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10221F))
+            ) {
+                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("СИСТЕМА", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text("Обзор сети", style = MaterialTheme.typography.headlineSmall)
+                        }
+                        StatusPill(if (overview.nodesOffline == 0 && overview.nodesXrayStopped == 0 && overview.nodesTotal > 0) "НОРМА" else "ВНИМАНИЕ", overview.nodesOffline == 0 && overview.nodesXrayStopped == 0 && overview.nodesTotal > 0)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        SummaryTile("УЗЛЫ", "${overview.nodesOnline}/${overview.nodesTotal}", "${overview.nodesOffline} офлайн", Modifier.weight(1f), MaterialTheme.colorScheme.primary)
+                        SummaryTile("ПОЛЬЗОВАТЕЛИ", overview.onlineUsers?.toString() ?: "—", if (overview.onlineUsersStale) "данные устарели" else "сейчас онлайн", Modifier.weight(1f), Color(0xFF79BFFF))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        SummaryTile("IN · ВХОД", "${overview.activeInNodes}", "активных узлов", Modifier.weight(1f), Color(0xFFB6A0FF))
+                        SummaryTile("OUT · ВЫХОД", "${overview.activeOutNodes}", "активных узлов", Modifier.weight(1f), Color(0xFFF0B66D))
+                    }
                     HorizontalDivider()
-                    Text("Пользователей онлайн: ${overview.onlineUsers ?: "нет данных"}", style = MaterialTheme.typography.titleSmall)
                     Text(
                         if (overview.onlineUsersStale) "Данные онлайн-пользователей устарели · ${prettyTime(overview.onlineUsersSampledAt)}"
                         else "Замер онлайн-пользователей: ${prettyTime(overview.onlineUsersSampledAt)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (overview.onlineUsersStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text("Снимок: ${prettyTime(overview.generatedAt)}", style = MaterialTheme.typography.bodySmall)
-                    Text("API ${snapshot.system.apiStatus} · база ${snapshot.system.databaseStatus}", style = MaterialTheme.typography.bodySmall)
-                    Text("Автообновление каждые 15 секунд", style = MaterialTheme.typography.bodySmall)
-                    Button(onClick = onRefresh, enabled = !loading) { Text(if (loading) "Обновляем…" else "Обновить") }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text("API ${snapshot.system.apiStatus} · БД ${snapshot.system.databaseStatus}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (loading) "ОБНОВЛЕНИЕ…" else "LIVE · 15 СЕК", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Button(onClick = onRefresh, enabled = !loading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) { Text(if (loading) "Обновляем…" else "Обновить данные") }
                     if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
 
-        item { Text("Серверы", style = MaterialTheme.typography.titleLarge) }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("ИНФРАСТРУКТУРА", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text("Серверы", style = MaterialTheme.typography.headlineSmall)
+                }
+                Text("${snapshot.nodes.size} УЗЛА", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         if (snapshot.nodes.isEmpty()) {
             item { Text("В API пока нет узлов.") }
         } else {
@@ -245,47 +284,95 @@ private fun Overview(
 
 @Composable
 private fun NodeCard(node: MonitorNode, onDetails: () -> Unit) {
-    Card {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(node.name, style = MaterialTheme.typography.titleMedium)
-                Text(healthLabel(node.health), style = MaterialTheme.typography.labelLarge)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(if (node.role == NodeRole.IN) "INCOMING NODE" else "OUTGOING NODE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(node.name, style = MaterialTheme.typography.titleLarge)
+                }
+                StatusPill(healthLabel(node.health).uppercase(), node.health == NodeHealth.ONLINE)
             }
             val location = listOfNotNull(node.city, node.country).joinToString(", ")
-            Text("${if (node.role == NodeRole.IN) "IN · Входящий" else "OUT · Исходящий"} · ID ${node.id}")
-            if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodySmall)
-            Text("Xray: ${node.xrayActive?.let { if (it) "работает" else "остановлен" } ?: "нет данных"}")
-            Text("Последний сигнал: ${prettyTime(node.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
-            if (node.syncPending) Text("Ожидает синхронизации")
-            node.syncStatus?.let { Text("Синхронизация: $it · ${prettyTime(node.syncRanAt)}", style = MaterialTheme.typography.bodySmall) }
-            HorizontalDivider()
+            Text(listOfNotNull(location.takeIf { it.isNotBlank() }, "ID ${node.id}").joinToString("  ·  "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                InfoPill("XRAY", node.xrayActive?.let { if (it) "АКТИВЕН" else "ОСТАНОВЛЕН" } ?: "НЕТ ДАННЫХ", node.xrayActive == true)
+                if (node.syncPending) InfoPill("SYNC", "ОЖИДАНИЕ", false)
+            }
             MetricsPanel(node.metrics, available = node.metricsAvailable, stale = node.metricsStale)
-            Button(onClick = onDetails) { Text("Подробнее") }
+            Text("СИГНАЛ · ${prettyTime(node.lastSeenAt)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = onDetails, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A2A35))) { Text("Подробнее  →", color = MaterialTheme.colorScheme.primary) }
         }
     }
 }
 
 @Composable
 private fun MetricsPanel(metrics: NodeMetrics?, available: Boolean, stale: Boolean) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Метрики узла", style = MaterialTheme.typography.titleSmall)
-                if (available) Text(if (stale) "Устарели" else "Актуальны", color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                Text("РЕСУРСЫ", style = MaterialTheme.typography.labelMedium)
+                if (available) Text(if (stale) "УСТАРЕЛИ" else "АКТУАЛЬНЫ", style = MaterialTheme.typography.labelSmall, color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             }
             if (!available || metrics == null) {
                 Text("Замер ещё не получен")
                 return@Column
             }
-            Text("CPU: ${metrics.cpuPercent?.let { percent(it) } ?: "ожидается следующий замер"}")
-            Text("RAM: ${formatBytes(metrics.ramUsedBytes)} / ${formatBytes(metrics.ramTotalBytes)}${sharePercent(metrics.ramUsedBytes, metrics.ramTotalBytes)}")
-            Text("Диск /: ${formatBytes(metrics.diskUsedBytes)} / ${formatBytes(metrics.diskTotalBytes)}${sharePercent(metrics.diskUsedBytes, metrics.diskTotalBytes)}")
-            Text("Сеть ↓ ${metrics.networkRxBytesPerSec?.let(::formatRate) ?: "—"} · ↑ ${metrics.networkTxBytesPerSec?.let(::formatRate) ?: "—"}")
-            Text("Uptime: ${formatUptime(metrics.uptimeSeconds)}")
-            Text("Замер: ${prettyTime(metrics.sampledAt)}", style = MaterialTheme.typography.bodySmall)
+            MetricLine("CPU", metrics.cpuPercent?.let(::percent) ?: "—", metrics.cpuPercent?.div(100.0)?.toFloat(), Color(0xFF72E5C2))
+            MetricLine("RAM", "${formatBytes(metrics.ramUsedBytes)} / ${formatBytes(metrics.ramTotalBytes)}", fraction(metrics.ramUsedBytes, metrics.ramTotalBytes), Color(0xFF79BFFF))
+            MetricLine("ДИСК", "${formatBytes(metrics.diskUsedBytes)} / ${formatBytes(metrics.diskTotalBytes)}", fraction(metrics.diskUsedBytes, metrics.diskTotalBytes), Color(0xFFB6A0FF))
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text("↓ ${metrics.networkRxBytesPerSec?.let(::formatRate) ?: "—"}", style = MaterialTheme.typography.bodySmall)
+                Text("↑ ${metrics.networkTxBytesPerSec?.let(::formatRate) ?: "—"}", style = MaterialTheme.typography.bodySmall)
+                Text(formatUptime(metrics.uptimeSeconds), style = MaterialTheme.typography.bodySmall)
+            }
+            Text("ЗАМЕР · ${prettyTime(metrics.sampledAt)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
+
+@Composable
+private fun SummaryTile(label: String, value: String, caption: String, modifier: Modifier, accent: Color) {
+    Column(modifier.background(Color(0xFF172B27), RoundedCornerShape(17.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.headlineSmall, color = accent)
+        Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun StatusPill(label: String, healthy: Boolean) {
+    val tint = if (healthy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    Surface(shape = RoundedCornerShape(50), color = tint.copy(alpha = 0.12f), modifier = Modifier.border(1.dp, tint.copy(alpha = 0.28f), RoundedCornerShape(50))) {
+        Text(label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = tint)
+    }
+}
+
+@Composable
+private fun InfoPill(label: String, value: String, healthy: Boolean) {
+    val tint = if (healthy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(shape = RoundedCornerShape(9.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Text("$label  ·  $value", modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = tint)
+    }
+}
+
+@Composable
+private fun MetricLine(label: String, value: String, fraction: Float?, tint: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.bodySmall)
+        }
+        LinearProgressIndicator(
+            progress = { (fraction ?: 0f).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().height(5.dp),
+            color = tint,
+            trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        )
+    }
+}
+
+private fun fraction(used: Long, total: Long): Float? = if (total > 0) used.toFloat() / total else null
 
 @Composable
 private fun NodeDetail(
@@ -302,12 +389,18 @@ private fun NodeDetail(
             item { Text(error ?: if (loading) "Загрузка узла…" else "Не удалось загрузить узел") }
         } else {
             item {
-                Text("${node.name} · ${if (node.role == NodeRole.IN) "IN" else "OUT"}", style = MaterialTheme.typography.titleLarge)
-                Text("Статус: ${healthLabel(node.health)} · конфигурация: ${node.configuredStatus}")
-                Text("Xray: ${node.xrayActive?.let { if (it) "работает" else "остановлен" } ?: "нет данных"}")
-                Text("Транспорты: ${node.enabledTransports.takeIf { it.isNotEmpty() }?.joinToString() ?: "—"}")
-                Text("Последний heartbeat: ${prettyTime(node.lastSeenAt)}")
-                node.syncMessage?.let { Text("Синхронизация: $it") }
+                Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text(if (node.role == NodeRole.IN) "INCOMING NODE · ${node.id}" else "OUTGOING NODE · ${node.id}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(node.name, style = MaterialTheme.typography.headlineSmall)
+                        StatusPill(healthLabel(node.health).uppercase(), node.health == NodeHealth.ONLINE)
+                        Text("Конфигурация · ${node.configuredStatus}", style = MaterialTheme.typography.bodySmall)
+                        Text("Xray · ${node.xrayActive?.let { if (it) "работает" else "остановлен" } ?: "нет данных"}")
+                        Text("Транспорты · ${node.enabledTransports.takeIf { it.isNotEmpty() }?.joinToString() ?: "—"}", style = MaterialTheme.typography.bodySmall)
+                        Text("Последний сигнал · ${prettyTime(node.lastSeenAt)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        node.syncMessage?.let { Text("Синхронизация · $it", style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
             }
             item { MetricsPanel(node.metrics, node.metricsAvailable, node.metricsStale) }
             item { Text("Данные узла обновляются автоматически каждые 15 секунд.", style = MaterialTheme.typography.bodySmall) }
