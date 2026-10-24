@@ -549,52 +549,64 @@ private fun Settings(
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Подключение к серверу", style = MaterialTheme.typography.titleLarge) }
-        item { Text("Введите отдельный monitor-token с правами только на чтение. Токен будет сохранён в зашифрованном виде на этом устройстве.") }
-        item {
-            OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, label = { Text("Base URL") }, placeholder = { Text("https://admin.seyro.ru") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        }
-        item {
-            OutlinedTextField(
-                value = token,
-                onValueChange = { token = it },
-                label = { Text(if (config.token.isBlank()) "Monitor token" else "Новый токен (необязательно)") },
-                placeholder = { Text(if (config.token.isBlank()) "Вставьте выданный токен" else "Оставьте пустым для текущего токена") },
-                visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth()
-            )
-        }
-        if (config.token.isNotBlank()) item { Text("Токен уже сохранён на этом устройстве.", style = MaterialTheme.typography.bodySmall) }
-        item {
-            Button(
-                onClick = {
-                    val enteredToken = token.trim().ifBlank { config.token }
-                    scope.launch {
-                        busy = true
-                        status = "Сохраняем настройки и проверяем API…"
-                        try {
-                            val newConfig = MonitorConfig(endpoint, enteredToken)
-                            configStore.save(newConfig.baseUrl, newConfig.token)
-                            val result = api.load(newConfig)
-                            token = ""
-                            status = "Подключено. Получено серверов: ${result.nodes.size}."
-                            onConnected(result)
-                        } catch (error: Exception) {
-                            val message = error.message ?: "Не удалось подключиться"
-                            status = message
-                            onConnectionError(message)
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
-                enabled = !busy && endpoint.isNotBlank() && (token.isNotBlank() || config.token.isNotBlank())
-            ) { Text(if (busy) "Проверяем…" else "Сохранить и подключиться") }
-        }
-        if (status.isNotBlank()) item { Text(status, style = MaterialTheme.typography.bodySmall) }
-        if (config.token.isNotBlank()) {
+        if (config.token.isBlank()) {
+            item { Text("Введите отдельный monitor-token с правами только на чтение. Токен будет сохранён в зашифрованном виде на этом устройстве.") }
             item {
-                Button(onClick = { scope.launch { configStore.clear(); token = ""; status = "Токен удалён с устройства." } }, enabled = !busy) {
-                    Text("Удалить сохранённый токен")
+                OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, label = { Text("Base URL") }, placeholder = { Text("https://admin.seyro.ru") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+            item {
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    label = { Text("Monitor token") },
+                    placeholder = { Text("Вставьте выданный токен") },
+                    visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+            }
+            item {
+                Button(
+                    onClick = {
+                        val newConfig = MonitorConfig(endpoint, token.trim())
+                        scope.launch {
+                            busy = true
+                            status = "Проверяем API…"
+                            try {
+                                val result = api.load(newConfig)
+                                configStore.save(newConfig.baseUrl, newConfig.token)
+                                token = ""
+                                status = "Подключено. Получено серверов: ${result.nodes.size}."
+                                onConnected(result)
+                            } catch (error: Exception) {
+                                val message = error.message ?: "Не удалось подключиться"
+                                status = message
+                                onConnectionError(message)
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    },
+                    enabled = !busy && endpoint.isNotBlank() && token.isNotBlank()
+                ) { Text(if (busy) "Проверяем…" else "Сохранить и подключиться") }
+            }
+            if (status.isNotBlank()) item { Text(status, style = MaterialTheme.typography.bodySmall, color = if (status.startsWith("Подключено")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else {
+            item {
+                Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("ДОСТУП НАСТРОЕН", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(endpoint, style = MaterialTheme.typography.titleMedium)
+                        Text("Ключ сохранён на устройстве и скрыт. Доступ только для просмотра.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
+            }
+            item {
+                Button(
+                    onClick = { scope.launch { configStore.clear(); token = ""; status = "Ключ удалён с устройства." } },
+                    enabled = !busy,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    shape = RoundedCornerShape(14.dp)
+                ) { Text("Удалить ключ") }
             }
         }
         item { HorizontalDivider() }

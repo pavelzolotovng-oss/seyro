@@ -22,7 +22,7 @@ GET /api/v1/monitor/system/status
 
 ## Обновления из GitHub
 
-В разделе «Доступ» приложение проверяет публичный `update.json` в этом репозитории. При наличии новой версии оно скачивает APK только по HTTPS, сверяет SHA-256 и передаёт установку системному Android Package Installer.
+В разделе «Доступ» приложение проверяет публичный `update.json` в этом репозитории. При наличии новой версии оно скачивает APK только по HTTPS, сверяет SHA-256 и передаёт установку системному Android Package Installer. Если read-only токен сохранён, форма ввода скрыта; удалить токен и вернуться к настройке подключения можно кнопкой «Удалить ключ».
 
 Релизы выпускаются тегом `seyro-monitor-vX.Y.Z`. Для этого в GitHub Actions необходимы четыре Secrets: `SEYRO_MONITOR_KEYSTORE_BASE64`, `SEYRO_MONITOR_KEYSTORE_PASSWORD`, `SEYRO_MONITOR_KEY_ALIAS` и `SEYRO_MONITOR_KEY_PASSWORD`. Это должен быть один постоянный ключ подписи: Android отклонит обновление, если APK подписан другим ключом.
 
