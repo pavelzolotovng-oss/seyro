@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -475,33 +476,55 @@ private fun MetricHistory(history: List<NodeMetrics>) {
 @Composable
 private fun HistoryChart(title: String, lines: List<ChartLine>, unit: String, fixedMax: Float? = null) {
     val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.48f)
+    val allValues = lines.flatMap { it.values }
+    val hasValues = allValues.isNotEmpty()
+    val maxValue = fixedMax ?: ((allValues.maxOrNull() ?: 1f) * 1.15f).coerceAtLeast(0.01f)
+    val rangeLabel = when {
+        !hasValues && fixedMax == null -> "$unit · ожидание"
+        unit == "%" -> "0–${axisTick(maxValue, unit, maxValue)}"
+        else -> "0–${axisTick(maxValue, unit, maxValue)} $unit"
+    }
     Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(rangeLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Canvas(Modifier.fillMaxWidth().height(112.dp)) {
-                val gridStroke = 1.dp.toPx()
-                for (index in 0..3) {
-                    val y = size.height * index / 3f
-                    drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), gridStroke)
-                }
-                val allValues = lines.flatMap { it.values }
-                val maxValue = fixedMax ?: ((allValues.maxOrNull() ?: 0.01f) * 1.15f).coerceAtLeast(0.01f)
-                lines.forEach { line ->
-                    if (line.values.isEmpty()) return@forEach
-                    val path = Path()
-                    line.values.forEachIndexed { index, value ->
-                        val x = if (line.values.size == 1) size.width / 2f else size.width * index / (line.values.lastIndex.toFloat())
-                        val y = size.height - (value / maxValue).coerceIn(0f, 1f) * size.height
-                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    Modifier.height(112.dp).width(44.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.End
+                ) {
+                    (4 downTo 0).forEach { step ->
+                        Text(
+                            if (!hasValues && fixedMax == null) "—" else axisTick(maxValue * step / 4f, unit, maxValue),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
                     }
-                    if (line.values.size == 1) {
-                        val y = size.height - (line.values.first() / maxValue).coerceIn(0f, 1f) * size.height
-                        drawCircle(line.color, radius = 4.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width / 2f, y))
-                    } else {
-                        drawPath(path, line.color, style = Stroke(width = 3.dp.toPx()))
+                }
+                Canvas(Modifier.weight(1f).height(112.dp).padding(vertical = 8.dp)) {
+                    val gridStroke = 1.dp.toPx()
+                    for (index in 0..4) {
+                        val y = size.height * index / 4f
+                        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), gridStroke)
+                    }
+                    lines.forEach { line ->
+                        if (line.values.isEmpty()) return@forEach
+                        val path = Path()
+                        line.values.forEachIndexed { index, value ->
+                            val x = if (line.values.size == 1) size.width / 2f else size.width * index / (line.values.lastIndex.toFloat())
+                            val y = size.height - (value / maxValue).coerceIn(0f, 1f) * size.height
+                            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                        }
+                        if (line.values.size == 1) {
+                            val y = size.height - (line.values.first() / maxValue).coerceIn(0f, 1f) * size.height
+                            drawCircle(line.color, radius = 4.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width / 2f, y))
+                        } else {
+                            drawPath(path, line.color, style = Stroke(width = 3.dp.toPx()))
+                        }
                     }
                 }
             }
@@ -518,6 +541,14 @@ private fun HistoryChart(title: String, lines: List<ChartLine>, unit: String, fi
             }
         }
     }
+}
+
+private fun axisTick(value: Float, unit: String, maxValue: Float): String = when {
+    unit == "%" -> String.format(Locale.getDefault(), "%.0f%%", value)
+    maxValue < 0.1f -> String.format(Locale.getDefault(), "%.3f", value)
+    maxValue < 10f -> String.format(Locale.getDefault(), "%.2f", value)
+    maxValue < 100f -> String.format(Locale.getDefault(), "%.1f", value)
+    else -> String.format(Locale.getDefault(), "%.0f", value)
 }
 
 private fun nodeHistoryKey(node: MonitorNode): String = "${node.role}-${node.id}"
