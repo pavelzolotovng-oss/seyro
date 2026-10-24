@@ -22,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,7 +35,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ru.seyro.monitor.BuildConfig
 import ru.seyro.monitor.data.MonitorApi
 import ru.seyro.monitor.data.MonitorConfig
@@ -42,13 +49,15 @@ import ru.seyro.monitor.data.MonitorConfigStore
 import ru.seyro.monitor.data.MonitorNode
 import ru.seyro.monitor.data.MonitorSnapshot
 import ru.seyro.monitor.data.NodeHealth
+import ru.seyro.monitor.data.NodeMetrics
 import ru.seyro.monitor.data.NodeRole
 import ru.seyro.monitor.update.UpdateCheck
 import ru.seyro.monitor.update.UpdateDownloader
 import ru.seyro.monitor.update.UpdateInfo
 import ru.seyro.monitor.update.UpdateRepository
+import java.util.Locale
 
-private enum class Screen { OVERVIEW, SETTINGS }
+private enum class Screen { OVERVIEW, NODE_DETAIL, SETTINGS }
 
 @Composable
 fun MonitorApp() {
@@ -57,27 +66,48 @@ fun MonitorApp() {
     val config by configStore.config.collectAsState(initial = MonitorConfig("https://admin.seyro.ru", ""))
     val api = remember { MonitorApi() }
     val scope = rememberCoroutineScope()
+    val refreshMutex = remember { Mutex() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appVisible by remember { mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
     var screen by remember { mutableStateOf(Screen.OVERVIEW) }
+    var selectedNode by remember { mutableStateOf<MonitorNode?>(null) }
+    var detailNode by remember { mutableStateOf<MonitorNode?>(null) }
     var snapshot by remember { mutableStateOf<MonitorSnapshot?>(null) }
     var loading by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<String?>(null) }
 
-    fun refresh(using: MonitorConfig = config) {
-        scope.launch {
-            loading = true
-            connectionError = null
-            try {
-                snapshot = api.load(using)
-            } catch (error: Exception) {
-                connectionError = error.message ?: "Не удалось получить данные сервера"
-            } finally {
-                loading = false
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { source, _ ->
+            appVisible = source.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    suspend fun refreshCurrent() {
+        if (config.token.isBlank() || screen == Screen.SETTINGS || !refreshMutex.tryLock()) return
+        loading = true
+        connectionError = null
+        try {
+            when (screen) {
+                Screen.OVERVIEW -> snapshot = api.load(config)
+                Screen.NODE_DETAIL -> selectedNode?.let { detailNode = api.loadNode(config, it.role, it.id) }
+                Screen.SETTINGS -> Unit
             }
+        } catch (error: Exception) {
+            connectionError = error.message ?: "Не удалось получить данные сервера"
+        } finally {
+            loading = false
+            refreshMutex.unlock()
         }
     }
 
-    LaunchedEffect(config.baseUrl, config.token) {
-        if (config.token.isNotBlank()) refresh()
+    LaunchedEffect(screen, selectedNode?.id, config.baseUrl, config.token, appVisible) {
+        if (!appVisible || config.token.isBlank() || screen == Screen.SETTINGS) return@LaunchedEffect
+        while (true) {
+            refreshCurrent()
+            delay(15_000)
+        }
     }
 
     Scaffold(
@@ -85,7 +115,7 @@ fun MonitorApp() {
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = screen == Screen.OVERVIEW,
+                    selected = screen == Screen.OVERVIEW || screen == Screen.NODE_DETAIL,
                     onClick = { screen = Screen.OVERVIEW },
                     icon = { Text("◉") },
                     label = { Text("Обзор") }
@@ -106,8 +136,21 @@ fun MonitorApp() {
                 loading = loading,
                 error = connectionError,
                 configured = config.token.isNotBlank(),
-                onRefresh = { refresh() },
-                onOpenSettings = { screen = Screen.SETTINGS }
+                onRefresh = { scope.launch { refreshCurrent() } },
+                onOpenSettings = { screen = Screen.SETTINGS },
+                onSelectNode = { node ->
+                    selectedNode = node
+                    detailNode = node
+                    screen = Screen.NODE_DETAIL
+                }
+            )
+            Screen.NODE_DETAIL -> NodeDetail(
+                modifier = Modifier.padding(padding),
+                node = detailNode,
+                loading = loading,
+                error = connectionError,
+                onBack = { screen = Screen.OVERVIEW },
+                onRefresh = { scope.launch { refreshCurrent() } }
             )
             Screen.SETTINGS -> Settings(
                 modifier = Modifier.padding(padding),
@@ -141,7 +184,8 @@ private fun Overview(
     error: String?,
     configured: Boolean,
     onRefresh: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onSelectNode: (MonitorNode) -> Unit
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -171,40 +215,38 @@ private fun Overview(
                     Text("Офлайн: ${overview.nodesOffline} · Xray остановлен: ${overview.nodesXrayStopped}")
                     Text("Неизвестно: ${overview.nodesUnknown} · ожидают синхронизации: ${overview.syncPendingNodes}")
                     Text("IN активно: ${overview.activeInNodes} · OUT активно: ${overview.activeOutNodes}")
-                    Text("Снимок: ${prettyTime(overview.generatedAt)}", style = MaterialTheme.typography.bodySmall)
+                    HorizontalDivider()
+                    Text("Пользователей онлайн: ${overview.onlineUsers ?: "нет данных"}", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "API ${snapshot.system.apiStatus} · база ${snapshot.system.databaseStatus}",
-                        style = MaterialTheme.typography.bodySmall
+                        if (overview.onlineUsersStale) "Данные онлайн-пользователей устарели · ${prettyTime(overview.onlineUsersSampledAt)}"
+                        else "Замер онлайн-пользователей: ${prettyTime(overview.onlineUsersSampledAt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (overview.onlineUsersStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Button(onClick = onRefresh, enabled = !loading) {
-                        Text(if (loading) "Обновляем…" else "Обновить")
-                    }
+                    Text("Снимок: ${prettyTime(overview.generatedAt)}", style = MaterialTheme.typography.bodySmall)
+                    Text("API ${snapshot.system.apiStatus} · база ${snapshot.system.databaseStatus}", style = MaterialTheme.typography.bodySmall)
+                    Text("Автообновление каждые 15 секунд", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = onRefresh, enabled = !loading) { Text(if (loading) "Обновляем…" else "Обновить") }
                     if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
 
-        if (snapshot.nodes.none { it.metricsAvailable }) {
-            item {
-                Text(
-                    "Сервер пока не передаёт CPU, RAM, диск и сетевые метрики. Доступны статусы узлов и Xray.",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-        }
         item { Text("Серверы", style = MaterialTheme.typography.titleLarge) }
         if (snapshot.nodes.isEmpty()) {
             item { Text("В API пока нет узлов.") }
         } else {
-            items(snapshot.nodes, key = { "${it.role}-${it.id}" }) { node -> NodeCard(node) }
+            items(snapshot.nodes, key = { "${it.role}-${it.id}" }) { node ->
+                NodeCard(node = node, onDetails = { onSelectNode(node) })
+            }
         }
     }
 }
 
 @Composable
-private fun NodeCard(node: MonitorNode) {
+private fun NodeCard(node: MonitorNode, onDetails: () -> Unit) {
     Card {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 Text(node.name, style = MaterialTheme.typography.titleMedium)
                 Text(healthLabel(node.health), style = MaterialTheme.typography.labelLarge)
@@ -212,13 +254,65 @@ private fun NodeCard(node: MonitorNode) {
             val location = listOfNotNull(node.city, node.country).joinToString(", ")
             Text("${if (node.role == NodeRole.IN) "IN · Входящий" else "OUT · Исходящий"} · ID ${node.id}")
             if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodySmall)
-            Text("Конфигурация: ${node.configuredStatus}")
             Text("Xray: ${node.xrayActive?.let { if (it) "работает" else "остановлен" } ?: "нет данных"}")
-            Text("Транспорты: ${node.enabledTransports.takeIf { it.isNotEmpty() }?.joinToString() ?: "—"}")
             Text("Последний сигнал: ${prettyTime(node.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
             if (node.syncPending) Text("Ожидает синхронизации")
             node.syncStatus?.let { Text("Синхронизация: $it · ${prettyTime(node.syncRanAt)}", style = MaterialTheme.typography.bodySmall) }
-            node.syncMessage?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            HorizontalDivider()
+            MetricsPanel(node.metrics, available = node.metricsAvailable, stale = node.metricsStale)
+            Button(onClick = onDetails) { Text("Подробнее") }
+        }
+    }
+}
+
+@Composable
+private fun MetricsPanel(metrics: NodeMetrics?, available: Boolean, stale: Boolean) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text("Метрики узла", style = MaterialTheme.typography.titleSmall)
+                if (available) Text(if (stale) "Устарели" else "Актуальны", color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            }
+            if (!available || metrics == null) {
+                Text("Замер ещё не получен")
+                return@Column
+            }
+            Text("CPU: ${metrics.cpuPercent?.let { percent(it) } ?: "ожидается следующий замер"}")
+            Text("RAM: ${formatBytes(metrics.ramUsedBytes)} / ${formatBytes(metrics.ramTotalBytes)}${sharePercent(metrics.ramUsedBytes, metrics.ramTotalBytes)}")
+            Text("Диск /: ${formatBytes(metrics.diskUsedBytes)} / ${formatBytes(metrics.diskTotalBytes)}${sharePercent(metrics.diskUsedBytes, metrics.diskTotalBytes)}")
+            Text("Сеть ↓ ${metrics.networkRxBytesPerSec?.let(::formatRate) ?: "—"} · ↑ ${metrics.networkTxBytesPerSec?.let(::formatRate) ?: "—"}")
+            Text("Uptime: ${formatUptime(metrics.uptimeSeconds)}")
+            Text("Замер: ${prettyTime(metrics.sampledAt)}", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun NodeDetail(
+    modifier: Modifier,
+    node: MonitorNode?,
+    loading: Boolean,
+    error: String?,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit
+) {
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Button(onClick = onBack) { Text("← К серверам") } }
+        if (node == null) {
+            item { Text(error ?: if (loading) "Загрузка узла…" else "Не удалось загрузить узел") }
+        } else {
+            item {
+                Text("${node.name} · ${if (node.role == NodeRole.IN) "IN" else "OUT"}", style = MaterialTheme.typography.titleLarge)
+                Text("Статус: ${healthLabel(node.health)} · конфигурация: ${node.configuredStatus}")
+                Text("Xray: ${node.xrayActive?.let { if (it) "работает" else "остановлен" } ?: "нет данных"}")
+                Text("Транспорты: ${node.enabledTransports.takeIf { it.isNotEmpty() }?.joinToString() ?: "—"}")
+                Text("Последний heartbeat: ${prettyTime(node.lastSeenAt)}")
+                node.syncMessage?.let { Text("Синхронизация: $it") }
+            }
+            item { MetricsPanel(node.metrics, node.metricsAvailable, node.metricsStale) }
+            item { Text("Данные узла обновляются автоматически каждые 15 секунд.", style = MaterialTheme.typography.bodySmall) }
+            item { Button(onClick = onRefresh, enabled = !loading) { Text(if (loading) "Обновляем…" else "Обновить") } }
+            if (error != null) item { Text(error, color = MaterialTheme.colorScheme.error) }
         }
     }
 }
@@ -241,24 +335,11 @@ private fun Settings(
     var updateState by remember { mutableStateOf("Проверка ещё не запускалась") }
     var availableUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Подключение к серверу", style = MaterialTheme.typography.titleLarge) }
+        item { Text("Введите отдельный monitor-token с правами только на чтение. Токен будет сохранён в зашифрованном виде на этом устройстве.") }
         item {
-            Text("Введите отдельный monitor-token с правами только на чтение. Токен будет сохранён в зашифрованном виде на этом устройстве.")
-        }
-        item {
-            OutlinedTextField(
-                value = endpoint,
-                onValueChange = { endpoint = it },
-                label = { Text("Base URL") },
-                placeholder = { Text("https://admin.seyro.ru") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, label = { Text("Base URL") }, placeholder = { Text("https://admin.seyro.ru") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
         item {
             OutlinedTextField(
@@ -266,9 +347,7 @@ private fun Settings(
                 onValueChange = { token = it },
                 label = { Text(if (config.token.isBlank()) "Monitor token" else "Новый токен (необязательно)") },
                 placeholder = { Text(if (config.token.isBlank()) "Вставьте выданный токен" else "Оставьте пустым для текущего токена") },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth()
             )
         }
         if (config.token.isNotBlank()) item { Text("Токен уже сохранён на этом устройстве.", style = MaterialTheme.typography.bodySmall) }
@@ -301,13 +380,9 @@ private fun Settings(
         if (status.isNotBlank()) item { Text(status, style = MaterialTheme.typography.bodySmall) }
         if (config.token.isNotBlank()) {
             item {
-                Button(onClick = {
-                    scope.launch {
-                        configStore.clear()
-                        token = ""
-                        status = "Токен удалён с устройства."
-                    }
-                }, enabled = !busy) { Text("Удалить сохранённый токен") }
+                Button(onClick = { scope.launch { configStore.clear(); token = ""; status = "Токен удалён с устройства." } }, enabled = !busy) {
+                    Text("Удалить сохранённый токен")
+                }
             }
         }
         item { HorizontalDivider() }
@@ -318,18 +393,9 @@ private fun Settings(
                 scope.launch {
                     updateState = "Проверяем GitHub…"
                     when (val result = UpdateRepository().check(BuildConfig.VERSION_CODE)) {
-                        UpdateCheck.NoUpdate -> {
-                            availableUpdate = null
-                            updateState = "Установлена актуальная версия"
-                        }
-                        is UpdateCheck.Available -> {
-                            availableUpdate = result.update
-                            updateState = "Доступна версия ${result.update.versionName}"
-                        }
-                        is UpdateCheck.Failed -> {
-                            availableUpdate = null
-                            updateState = result.message
-                        }
+                        UpdateCheck.NoUpdate -> { availableUpdate = null; updateState = "Установлена актуальная версия" }
+                        is UpdateCheck.Available -> { availableUpdate = result.update; updateState = "Доступна версия ${result.update.versionName}" }
+                        is UpdateCheck.Failed -> { availableUpdate = null; updateState = result.message }
                     }
                 }
             }) { Text("Проверить обновления") }
@@ -358,3 +424,29 @@ private fun prettyTime(value: String?): String = value
     ?.removeSuffix("Z")
     ?.take(19)
     ?: "—"
+
+private fun percent(value: Double): String = String.format(Locale.getDefault(), "%.1f%%", value)
+
+private fun sharePercent(used: Long, total: Long): String =
+    if (total > 0) " · ${percent(used.toDouble() * 100.0 / total)}" else ""
+
+private fun formatRate(value: Double): String = "${formatBytes(value.toLong())}/с"
+
+private fun formatBytes(value: Long): String {
+    if (value < 1024) return "$value Б"
+    val units = listOf("КБ", "МБ", "ГБ", "ТБ")
+    var amount = value.toDouble()
+    var unit = -1
+    while (amount >= 1024 && unit < units.lastIndex) {
+        amount /= 1024.0
+        unit++
+    }
+    return String.format(Locale.getDefault(), "%.1f %s", amount, units[unit])
+}
+
+private fun formatUptime(value: Long): String {
+    val days = value / 86_400
+    val hours = (value % 86_400) / 3_600
+    val minutes = (value % 3_600) / 60
+    return if (days > 0) "$days д $hours ч" else "$hours ч $minutes мин"
+}

@@ -9,7 +9,10 @@ data class MonitorOverview(
     val nodesUnknown: Int,
     val activeInNodes: Int,
     val activeOutNodes: Int,
-    val syncPendingNodes: Int
+    val syncPendingNodes: Int,
+    val onlineUsers: Int?,
+    val onlineUsersSampledAt: String?,
+    val onlineUsersStale: Boolean
 )
 
 data class MonitorNode(
@@ -27,7 +30,21 @@ data class MonitorNode(
     val syncRanAt: String?,
     val syncMessage: String?,
     val syncPending: Boolean,
-    val metricsAvailable: Boolean
+    val metricsAvailable: Boolean,
+    val metricsStale: Boolean,
+    val metrics: NodeMetrics?
+)
+
+data class NodeMetrics(
+    val cpuPercent: Double?,
+    val ramUsedBytes: Long,
+    val ramTotalBytes: Long,
+    val diskUsedBytes: Long,
+    val diskTotalBytes: Long,
+    val networkRxBytesPerSec: Double?,
+    val networkTxBytesPerSec: Double?,
+    val uptimeSeconds: Long,
+    val sampledAt: String
 )
 
 data class MonitorSystemStatus(

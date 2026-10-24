@@ -21,6 +21,12 @@ class MonitorApi {
         MonitorSnapshot(overview, nodes, system)
     }
 
+    suspend fun loadNode(config: MonitorConfig, role: NodeRole, nodeId: Long): MonitorNode = withContext(Dispatchers.IO) {
+        require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Доступ»" }
+        val rolePath = if (role == NodeRole.IN) "in" else "out"
+        parseNode(getJson(config.baseUrl.trim().trimEnd('/'), config.token, "/api/v1/monitor/nodes/$rolePath/$nodeId"))
+    }
+
     private fun getJson(baseUrl: String, token: String, path: String): JSONObject {
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
@@ -28,6 +34,7 @@ class MonitorApi {
             readTimeout = TIMEOUT_MS
             instanceFollowRedirects = false
             setRequestProperty("Accept", "application/json")
+            setRequestProperty("Cache-Control", "no-cache")
             setRequestProperty("Authorization", "Bearer $token")
         }
         try {
@@ -69,7 +76,10 @@ class MonitorApi {
         nodesUnknown = json.getInt("nodes_unknown"),
         activeInNodes = json.getInt("active_in_nodes"),
         activeOutNodes = json.getInt("active_out_nodes"),
-        syncPendingNodes = json.getInt("sync_pending_nodes")
+        syncPendingNodes = json.getInt("sync_pending_nodes"),
+        onlineUsers = json.nullableInt("online_users"),
+        onlineUsersSampledAt = json.nullableString("online_users_sampled_at"),
+        onlineUsersStale = json.optBoolean("online_users_stale", true)
     )
 
     private fun parseNode(json: JSONObject): MonitorNode = MonitorNode(
@@ -98,7 +108,21 @@ class MonitorApi {
         syncRanAt = json.nullableString("sync_ran_at"),
         syncMessage = json.nullableString("sync_message"),
         syncPending = json.getBoolean("sync_pending"),
-        metricsAvailable = json.getBoolean("metrics_available")
+        metricsAvailable = json.getBoolean("metrics_available"),
+        metricsStale = json.optBoolean("metrics_stale", true),
+        metrics = if (json.isNull("metrics")) null else parseMetrics(json.getJSONObject("metrics"))
+    )
+
+    private fun parseMetrics(json: JSONObject) = NodeMetrics(
+        cpuPercent = json.nullableDouble("cpu_percent"),
+        ramUsedBytes = json.getLong("ram_used_bytes"),
+        ramTotalBytes = json.getLong("ram_total_bytes"),
+        diskUsedBytes = json.getLong("disk_used_bytes"),
+        diskTotalBytes = json.getLong("disk_total_bytes"),
+        networkRxBytesPerSec = json.nullableDouble("network_rx_bytes_per_sec"),
+        networkTxBytesPerSec = json.nullableDouble("network_tx_bytes_per_sec"),
+        uptimeSeconds = json.getLong("uptime_seconds"),
+        sampledAt = json.getString("sampled_at")
     )
 
     private fun parseSystem(json: JSONObject) = MonitorSystemStatus(
@@ -111,6 +135,10 @@ class MonitorApi {
     private fun JSONObject.nullableString(key: String): String? = if (isNull(key)) null else getString(key)
 
     private fun JSONObject.nullableBoolean(key: String): Boolean? = if (isNull(key)) null else getBoolean(key)
+
+    private fun JSONObject.nullableDouble(key: String): Double? = if (isNull(key)) null else getDouble(key)
+
+    private fun JSONObject.nullableInt(key: String): Int? = if (isNull(key)) null else getInt(key)
 
     private fun JSONArray.toStringList(): List<String> = List(length()) { index -> getString(index) }
 

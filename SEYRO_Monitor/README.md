@@ -14,7 +14,9 @@ GET /api/v1/monitor/nodes
 GET /api/v1/monitor/system/status
 ```
 
-Обзор показывает сводку по узлам, статусы IN/OUT, Xray и синхронизации. API в настоящее время возвращает `metrics_available: false`; CPU, RAM, диск, сеть и их история пока не отображаются.
+Обзор показывает сводку по узлам, статусы IN/OUT, Xray, синхронизацию и число онлайн-пользователей. Для каждого узла приложение читает `metrics` из списка и detail-маршрута: `cpu_percent`, `ram_used_bytes`, `ram_total_bytes`, `disk_used_bytes`, `disk_total_bytes`, `network_rx_bytes_per_sec`, `network_tx_bytes_per_sec`, `uptime_seconds`, `sampled_at`. Устаревшие показатели отмечаются по `metrics_stale`; пользовательский онлайн-счётчик — по `online_users_stale` и времени `online_users_sampled_at`.
+
+Обзор и открытая карточка узла обновляются каждые 15 секунд, пока приложение на экране. При отсутствии второго замера CPU и скорости сети показываются как ожидающие данных.
 
 ## Обновления из GitHub
 
