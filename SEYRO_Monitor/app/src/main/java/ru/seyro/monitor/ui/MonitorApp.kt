@@ -27,11 +27,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import ru.seyro.monitor.data.NodeHealth
 import ru.seyro.monitor.data.NodeRole
+import ru.seyro.monitor.BuildConfig
+import ru.seyro.monitor.update.UpdateCheck
+import ru.seyro.monitor.update.UpdateDownloader
+import ru.seyro.monitor.update.UpdateInfo
+import ru.seyro.monitor.update.UpdateRepository
+import kotlinx.coroutines.launch
 
 private enum class Screen { OVERVIEW, SETTINGS }
 
@@ -96,6 +103,10 @@ private fun NodePreview(kind: String, title: String, role: NodeRole, health: Nod
 private fun Settings(modifier: Modifier) {
     var endpoint by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var updateState by remember { mutableStateOf("Проверка ещё не запускалась") }
+    var availableUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Read-only API", style = MaterialTheme.typography.titleLarge)
         Text("Укажите URL FastAPI и отдельный monitor-token. Админская cookie-сессия и технические Xray-токены не поддерживаются.")
@@ -104,5 +115,33 @@ private fun Settings(modifier: Modifier) {
         Button(onClick = { }, enabled = endpoint.isNotBlank() && token.isNotBlank()) { Text("Сохранить после подключения API") }
         HorizontalDivider()
         Text("Контракт: GET /api/v1/monitor/overview, /nodes и /nodes/{role}/{id}/metrics. До появления этих маршрутов приложение не отправляет запросы и не показывает тестовые показатели как реальные.", style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
+        Text("Обновление приложения", style = MaterialTheme.typography.titleMedium)
+        Text(updateState, style = MaterialTheme.typography.bodySmall)
+        Button(onClick = {
+            scope.launch {
+                updateState = "Проверяем GitHub…"
+                when (val result = UpdateRepository().check(BuildConfig.VERSION_CODE)) {
+                    UpdateCheck.NoUpdate -> {
+                        availableUpdate = null
+                        updateState = "Установлена актуальная версия"
+                    }
+                    is UpdateCheck.Available -> {
+                        availableUpdate = result.update
+                        updateState = "Доступна версия ${result.update.versionName}"
+                    }
+                    is UpdateCheck.Failed -> {
+                        availableUpdate = null
+                        updateState = result.message
+                    }
+                }
+            }
+        }) { Text("Проверить обновления") }
+        availableUpdate?.let { update ->
+            Button(onClick = {
+                UpdateDownloader.start(context, update)
+                updateState = "Загрузка началась. После проверки SHA-256 Android предложит установку."
+            }) { Text("Скачать ${update.versionName}") }
+        }
     }
 }
