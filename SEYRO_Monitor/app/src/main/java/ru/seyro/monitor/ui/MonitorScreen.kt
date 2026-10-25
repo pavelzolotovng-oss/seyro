@@ -174,29 +174,28 @@ fun MonitorScreen() {
             } else Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
                 Header(onSettings = { showSettings = true })
                 if (config.token.isNotBlank()) {
-                    OverviewCard(nodes, lastUpdated, overview, overviewExpanded) { overviewExpanded = !overviewExpanded }
-                    if (loadError != null) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1)),
-                            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
-                        ) {
-                            Text("Нет связи: $loadError · повторим автоматически", color = Red, fontSize = 12.sp, modifier = Modifier.padding(13.dp))
-                        }
-                    }
-                    if (isLoading && nodes.isEmpty()) {
-                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(26.dp))
-                                Text("Загружаем узлы…", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item { OverviewCard(nodes, lastUpdated, overview, overviewExpanded) { overviewExpanded = !overviewExpanded } }
+                        if (loadError != null) {
+                            item {
+                                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1)), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Text("Нет связи: $loadError · повторим автоматически", color = Red, fontSize = 12.sp, modifier = Modifier.padding(13.dp))
+                                }
                             }
                         }
-                    } else if (nodes.isEmpty() && loadError == null) {
-                        EmptyState("API пока не вернул узлы")
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
+                        if (isLoading && nodes.isEmpty()) {
+                            item {
+                                Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(26.dp))
+                                    Text("Загружаем узлы…", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
+                                }
+                            }
+                        } else if (nodes.isEmpty() && loadError == null) {
+                            item { EmptyState("API пока не вернул узлы") }
+                        } else if (nodes.isNotEmpty()) {
                             item { SectionHeader(nodes.size) }
                             items(nodes, key = { "${it.key.role}:${it.key.id}" }) { node ->
                                 NodeCard(node) { selectedNodeKey = node.key }
@@ -398,7 +397,8 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
 
 @Composable
 private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelected: (Int) -> Unit, onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = 18.dp)) {
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
+    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp).clickable(onClick = onBack)) {
                 Box(contentAlignment = Alignment.Center) { Text("‹", color = Ink, fontSize = 27.sp) }
@@ -428,8 +428,6 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
                 item { MetricChart("RAM", "%", points, points.map { percent(it.ramUsedBytes, it.ramTotalBytes) }, rangeMinutes, fixedMaximum = 100.0) }
                 item { MetricChart("Диск", "%", points, points.map { percent(it.diskUsedBytes, it.diskTotalBytes) }, rangeMinutes, fixedMaximum = 100.0) }
                 item { MetricChart("Сеть", "Б/с", points, points.map { it.networkRxBytesPerSec }, rangeMinutes, secondValues = points.map { it.networkTxBytesPerSec }, secondLabel = "OUT") }
-                item { SyncInfo(node) }
-                item { Footer() }
             }
         }
     }
