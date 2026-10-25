@@ -149,7 +149,7 @@ fun MonitorApp() {
                     selected = screen == Screen.SETTINGS,
                     onClick = { screen = Screen.SETTINGS },
                     icon = { Text("⚙") },
-                    label = { Text("Доступ") }
+                    label = { Text("Настройки") }
                 )
             }
         }
@@ -231,7 +231,7 @@ private fun Overview(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(if (configured) "СВЯЗЬ НЕ УСТАНОВЛЕНА" else "ДОБРО ПОЖАЛОВАТЬ В SEYRO", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Text(if (configured) "Нет данных от сервера" else "Подключите мониторинг", style = MaterialTheme.typography.headlineSmall)
-                        Text(error ?: "Адрес сервера уже указан. Введите выпущенный monitor-token в разделе «Доступ».")
+                        Text(error ?: "Адрес сервера уже указан. Введите выпущенный monitor-token в разделе «Настройки».")
                         if (!configured) Button(onClick = onOpenSettings) { Text("Настроить доступ") }
                         else Button(onClick = onRefresh, enabled = !loading) { Text(if (loading) "Подключаемся…" else "Повторить") }
                     }
@@ -639,6 +639,15 @@ private fun Settings(
     var availableUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text("SEYRO Monitor ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+                    Text("Сборка ${BuildConfig.VERSION_CODE}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         item { Text("Подключение к серверу", style = MaterialTheme.typography.titleLarge) }
         if (config.token.isBlank()) {
             item { Text("Введите отдельный monitor-token с правами только на чтение. Токен будет сохранён в зашифрованном виде на этом устройстве.") }

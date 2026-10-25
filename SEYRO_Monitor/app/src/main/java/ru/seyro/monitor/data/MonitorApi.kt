@@ -11,7 +11,7 @@ import kotlinx.coroutines.withContext
 
 class MonitorApi {
     suspend fun load(config: MonitorConfig): MonitorSnapshot = withContext(Dispatchers.IO) {
-        require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Доступ»" }
+        require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Настройки»" }
         val baseUrl = config.baseUrl.trim().trimEnd('/')
         val overview = parseOverview(getJson(baseUrl, config.token, "/api/v1/monitor/overview"))
         val nodes = loadNodes(baseUrl, config.token)
@@ -20,12 +20,12 @@ class MonitorApi {
     }
 
     suspend fun loadNodes(config: MonitorConfig): List<MonitorNode> = withContext(Dispatchers.IO) {
-        require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Доступ»" }
+        require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Настройки»" }
         loadNodes(config.baseUrl.trim().trimEnd('/'), config.token)
     }
 
     suspend fun loadNode(config: MonitorConfig, role: NodeRole, nodeId: Long): MonitorNode = withContext(Dispatchers.IO) {
-        require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Доступ»" }
+        require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Настройки»" }
         val rolePath = if (role == NodeRole.IN) "in" else "out"
         parseNode(getJson(config.baseUrl.trim().trimEnd('/'), config.token, "/api/v1/monitor/nodes/$rolePath/$nodeId"))
     }
