@@ -7,7 +7,6 @@ import java.net.URL
 data class UpdateInfo(
     val versionName: String,
     val apkUrl: String,
-    val sha256: String,
     val releaseNotes: String
 )
 
@@ -45,20 +44,17 @@ class UpdateRepository {
 
                 val assets = release.optJSONArray("assets") ?: continue
                 var apkUrl: String? = null
-                var sha256 = ""
                 for (assetIndex in 0 until assets.length()) {
                     val asset = assets.optJSONObject(assetIndex) ?: continue
                     if (asset.optString("name") != APK_ASSET) continue
                     apkUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://github.com/") }
-                    sha256 = asset.optString("digest").removePrefix("sha256:").lowercase()
                     break
                 }
-                if (apkUrl == null || !SHA_256.matches(sha256)) continue
+                if (apkUrl == null) continue
 
                 val candidate = UpdateInfo(
                     versionName = version,
                     apkUrl = apkUrl,
-                    sha256 = sha256,
                     releaseNotes = release.optString("body").ifBlank { "Для этой версии нет описания изменений." }
                 )
                 if (newest == null || compareVersions(candidate.versionName, newest.versionName) > 0) newest = candidate
@@ -87,6 +83,5 @@ class UpdateRepository {
         const val APK_ASSET = "seyro-monitor.apk"
         const val MAX_RESPONSE_CHARS = 1_000_000
         val VERSION = Regex("(\\d+)\\.(\\d+)\\.(\\d+)")
-        val SHA_256 = Regex("[0-9a-f]{64}")
     }
 }
