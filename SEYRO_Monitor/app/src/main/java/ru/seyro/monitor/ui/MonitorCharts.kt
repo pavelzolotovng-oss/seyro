@@ -64,10 +64,10 @@ fun MetricChart(
             Text("Нет данных", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
         } else {
             if (visibleSecondValues == null) {
-                SeriesStats(values = visibleValues, unit = unit)
+                SeriesStats(values = values, unit = unit)
             } else {
-                SeriesStats(values = visibleValues, unit = unit, label = "ВХОДЯЩАЯ", color = Blue)
-                SeriesStats(values = visibleSecondValues, unit = unit, label = "ИСХОДЯЩАЯ", color = Violet)
+                SeriesStats(values = values, unit = unit, label = "ВХОДЯЩАЯ", color = Blue)
+                SeriesStats(values = secondValues.orEmpty(), unit = unit, label = "ИСХОДЯЩАЯ", color = Violet)
             }
             Canvas(Modifier.fillMaxWidth().height(112.dp).padding(top = 10.dp)) {
                 val left = 31.dp.toPx()
@@ -146,11 +146,11 @@ fun MetricChart(
 
 @Composable
 private fun SeriesStats(values: List<Double?>, unit: String, label: String? = null, color: Color = Blue) {
-    val last = values.lastOrNull()
     val present = values.filterNotNull()
+    val average = present.takeIf { it.isNotEmpty() }?.average()
     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         if (label != null) Text(label, color = color, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(70.dp))
-        StatValue("ПОСЛЕДНЕЕ", formatMetric(last, unit), Modifier.weight(1f))
+        StatValue("СРЕДНЕЕ", formatMetric(average, unit), Modifier.weight(1f))
         StatValue("МИН", formatMetric(present.minOrNull(), unit), Modifier.weight(0.75f))
         StatValue("МАКС", formatMetric(present.maxOrNull(), unit), Modifier.weight(0.75f))
     }

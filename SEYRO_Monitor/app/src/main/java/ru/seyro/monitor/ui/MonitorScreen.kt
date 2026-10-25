@@ -346,6 +346,7 @@ private fun SectionHeader(count: Int, selectedRangeMinutes: Int, onRangeSelected
                 }
             }
         }
+        Text("Среднее, минимум и максимум — по всей истории в памяти (до 30 минут)", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
