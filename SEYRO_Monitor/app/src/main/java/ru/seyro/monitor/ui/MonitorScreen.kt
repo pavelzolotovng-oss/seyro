@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -166,7 +165,6 @@ fun MonitorScreen() {
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
                 Header(onSettings = { showSettings = true })
                 if (config.token.isNotBlank()) {
-                    OverviewCard(nodes, lastUpdated, overview, overviewExpanded) { overviewExpanded = !overviewExpanded }
                     if (loadError != null) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1)),
@@ -189,9 +187,18 @@ fun MonitorScreen() {
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            item { SectionHeader(nodes.size, selectedRangeMinutes) { selectedRangeMinutes = it } }
-                            items(nodes, key = { "${it.key.role}:${it.key.id}" }) { node ->
-                                NodeCard(node, expanded[node.key] == true, selectedRangeMinutes) { expanded[node.key] = expanded[node.key] != true }
+                            item {
+                                OverviewCard(
+                                    nodes = nodes,
+                                    updated = lastUpdated,
+                                    overview = overview,
+                                    expanded = overviewExpanded,
+                                    expandedNodes = expanded,
+                                    rangeMinutes = selectedRangeMinutes,
+                                    onRangeSelected = { selectedRangeMinutes = it },
+                                    onNodeToggle = { key -> expanded[key] = expanded[key] != true },
+                                    onToggle = { overviewExpanded = !overviewExpanded }
+                                )
                             }
                             item { Footer() }
                         }
@@ -309,65 +316,58 @@ private fun OverviewCard(
     updated: Long?,
     overview: OnlineOverview?,
     expanded: Boolean,
+    expandedNodes: Map<ServerKey, Boolean>,
+    rangeMinutes: Int,
+    onRangeSelected: (Int) -> Unit,
+    onNodeToggle: (ServerKey) -> Unit,
     onToggle: () -> Unit
 ) {
     val onlineNodes = nodes.count { it.health == "online" }
     val userSampleTime = overview?.sampledAt?.let(::formatApiTime)
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF172944)),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(21.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle)
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 13.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Состояние инфраструктуры", color = Color(0xFFB9C6D9), fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text(if (expanded) "⌃" else "⌄", color = Color(0xFFB9C6D9), fontSize = 19.sp)
+            Row(Modifier.fillMaxWidth().clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
+                Text("Состояние инфраструктуры", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(if (expanded) "⌃" else "⌄", color = Muted, fontSize = 19.sp)
             }
-            Text("${overview?.onlineUsers?.toString() ?: "—"} человек онлайн", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
-            Text("$onlineNodes из ${nodes.size} серверов онлайн", color = Color(0xFFB9C6D9), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+            Text("${overview?.onlineUsers?.toString() ?: "—"} человек онлайн", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
+            Text("$onlineNodes из ${nodes.size} серверов онлайн", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
             if (overview?.stale == true) {
-                Text("Счётчик пользователей устарел", color = Color(0xFFFFD18A), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("Счётчик пользователей устарел", color = Color(0xFFAC6D13), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
             }
             if (expanded) {
-                Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 7.dp))
-                Text(updated?.let { "Обновлено ${TimeLabel.format(Instant.ofEpochMilli(it))} · каждые 15 сек" } ?: "Ожидание данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionHeader(count: Int, selectedRangeMinutes: Int, onRangeSelected: (Int) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 21.dp, bottom = 2.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("УЗЛЫ", color = Muted, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(8.dp))
-            Text(count.toString(), color = Muted, fontSize = 10.sp)
-            Spacer(Modifier.weight(1f))
-            Text("Автообновление 15 с", color = Muted, fontSize = 10.sp)
-        }
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("ПЕРИОД ГРАФИКА", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Spacer(Modifier.weight(1f))
-            listOf(5, 15, 30).forEach { minutes ->
-                val selected = minutes == selectedRangeMinutes
-                Surface(
-                    color = if (selected) Accent else Color.White,
-                    shape = RoundedCornerShape(9.dp),
-                    modifier = Modifier.padding(start = 5.dp).clickable { onRangeSelected(minutes) }
-                ) {
-                    Text("${minutes}м", color = if (selected) Color.White else Ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp))
+                Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 7.dp))
+                Text(updated?.let { "Обновлено ${TimeLabel.format(Instant.ofEpochMilli(it))} · каждые 15 сек" } ?: "Ожидание данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("УЗЛЫ · ${nodes.size}", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    listOf(5, 15, 30).forEach { minutes ->
+                        val selected = minutes == rangeMinutes
+                        Surface(
+                            color = if (selected) Accent else Color(0xFFF1F4F9),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(start = 5.dp).clickable { onRangeSelected(minutes) }
+                        ) {
+                            Text("${minutes}м", color = if (selected) Color.White else Ink, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
+                        }
+                    }
+                }
+                Text("Среднее, минимум и максимум — по истории в памяти (до 30 минут)", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(bottom = 5.dp))
+                nodes.forEachIndexed { index, node ->
+                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Grid))
+                    NodeCard(node, expandedNodes[node.key] == true, rangeMinutes) { onNodeToggle(node.key) }
                 }
             }
         }
-        Text("Среднее, минимум и максимум — по всей истории в памяти (до 30 минут)", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
 @Composable
 private fun NodeCard(node: ServerNode, isExpanded: Boolean, rangeMinutes: Int, onToggle: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(19.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth().clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(if (node.key.role == "in") Color(0xFFEAF0FF) else Color(0xFFF0EBFF)), contentAlignment = Alignment.Center) {
                     Text(if (node.key.role == "in") "IN" else "OUT", color = if (node.key.role == "in") Accent else Color(0xFF8056DC), fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -419,7 +419,6 @@ private fun NodeCard(node: ServerNode, isExpanded: Boolean, rangeMinutes: Int, o
                 }
             }
         }
-    }
 }
 
 @Composable
@@ -452,7 +451,7 @@ private fun SyncInfo(node: ServerNode) {
                 color = Muted,
                 fontSize = 9.sp
             )
-            Text("Онлайн — узел недавно ответил; доступность с телефона не проверяется.", color = Muted, fontSize = 8.sp)
+            Text("ONLINE означает, что узел недавно ответил и сообщил об активном Xray; доступность с телефона не проверяется.", color = Muted, fontSize = 8.sp)
         }
     }
 }
