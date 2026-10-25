@@ -46,7 +46,6 @@ jobs:
             test -n "${!value}" || { echo "::error::Missing SEYRO Monitor signing secret: $value"; exit 1; }
           done
           echo "version_name=$VERSION_NAME" >> "$GITHUB_ENV"
-          echo "version_code=$VERSION_CODE" >> "$GITHUB_ENV"
 
       - name: Build signed release APK
         env:
@@ -67,7 +66,6 @@ jobs:
           export SEYRO_MONITOR_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
           gradle --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk seyro-monitor.apk
-          echo "sha256=$(sha256sum seyro-monitor.apk | awk '{print $1}')" >> "$GITHUB_ENV"
 
       - name: Publish GitHub release
         env:
@@ -76,30 +74,3 @@ jobs:
           TAG="seyro-monitor-v$version_name"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "SEYRO Monitor $version_name" --generate-notes
           gh release upload "$TAG" seyro-monitor.apk --clobber
-
-      - name: Update public manifest on main
-        run: |
-          git fetch origin main
-          git checkout main
-          export APK_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/seyro-monitor-v$version_name/seyro-monitor.apk"
-          python3 - <<'PY'
-          import json, os
-          path = 'update.json'
-          payload = {
-              'latest': {
-                  'version_code': int(os.environ['version_code']),
-                  'version_name': os.environ['version_name'],
-                  'apk_url': os.environ['APK_URL'],
-                  'sha256': os.environ['sha256'],
-                  'release_notes': f"SEYRO Monitor {os.environ['version_name']}",
-              }
-          }
-          with open(path, 'w', encoding='utf-8') as stream:
-              json.dump(payload, stream, ensure_ascii=False, indent=2)
-              stream.write('\n')
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add update.json
-          git diff --cached --quiet || git commit -m "Publish SEYRO Monitor $version_name update manifest"
-          git push origin main

@@ -1,9 +1,0 @@
-{
-  "latest": {
-    "version_code": 16,
-    "version_name": "0.4.12",
-    "apk_url": "https://github.com/pavelzolotovng-oss/seyro/releases/download/seyro-monitor-v0.4.12/seyro-monitor.apk",
-    "sha256": "d63881b01b251e7ee45dcc44e435d0c8fa4b902a7e5f21969cc807f12c1c3425",
-    "release_notes": "SEYRO Monitor 0.4.12"
-  }
-}
