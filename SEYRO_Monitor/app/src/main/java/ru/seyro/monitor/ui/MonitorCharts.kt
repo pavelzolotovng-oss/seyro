@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
@@ -75,20 +77,39 @@ fun MetricChart(
                 val span = (samples.last().epochMillis - firstTime).coerceAtLeast(1L).toFloat()
                 fun x(index: Int): Float = left + chartWidth * ((samples[index].epochMillis - firstTime) / span)
                 fun drawSeries(series: List<Double?>, color: Color) {
-                    val path = Path()
-                    var segmentOpen = false
-                    series.forEachIndexed { index, value ->
+                    val displayValues = smoothForDisplay(series)
+                    var run = mutableListOf<Offset>()
+                    fun drawRun() {
+                        if (run.isEmpty()) return
+                        val path = Path().apply { moveTo(run.first().x, run.first().y) }
+                        for (i in 0 until run.lastIndex) {
+                            val start = run[i]
+                            val end = run[i + 1]
+                            val previous = run.getOrNull(i - 1) ?: start
+                            val next = run.getOrNull(i + 2) ?: end
+                            val dx = end.x - start.x
+                            val beforeDx = (end.x - previous.x).coerceAtLeast(1f)
+                            val afterDx = (next.x - start.x).coerceAtLeast(1f)
+                            val lowY = minOf(start.y, end.y)
+                            val highY = maxOf(start.y, end.y)
+                            val control1Y = (start.y + ((end.y - previous.y) / beforeDx) * dx / 3f).coerceIn(lowY, highY)
+                            val control2Y = (end.y - ((next.y - start.y) / afterDx) * dx / 3f).coerceIn(lowY, highY)
+                            path.cubicTo(start.x + dx / 3f, control1Y, end.x - dx / 3f, control2Y, end.x, end.y)
+                        }
+                        drawPath(path, color, style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        if (run.size == 1) drawCircle(color, radius = 2.dp.toPx(), center = run.first())
+                        run.lastOrNull()?.let { drawCircle(color, radius = 2.5.dp.toPx(), center = it) }
+                        run = mutableListOf()
+                    }
+                    displayValues.forEachIndexed { index, value ->
                         val normalized = value?.let { (it / maxValue).coerceIn(0.0, 1.0) }
                         if (normalized == null) {
-                            segmentOpen = false
+                            drawRun()
                         } else {
-                            val point = Offset(x(index), bottom - chartHeight * normalized.toFloat())
-                            if (segmentOpen) path.lineTo(point.x, point.y) else path.moveTo(point.x, point.y)
-                            segmentOpen = true
-                            drawCircle(color, radius = 2.4.dp.toPx(), center = point)
+                            run += Offset(x(index), bottom - chartHeight * normalized.toFloat())
                         }
                     }
-                    drawPath(path, color, style = Stroke(width = 2.2.dp.toPx()))
+                    drawRun()
                 }
                 drawSeries(values, Blue)
                 secondValues?.let { drawSeries(it, Violet) }
@@ -106,6 +127,33 @@ fun MetricChart(
             }
         }
     }
+}
+
+/** Smooth only the visual series; the in-memory and API samples remain untouched. Nulls split the line into separate runs. */
+private fun smoothForDisplay(values: List<Double?>): List<Double?> {
+    val result = MutableList<Double?>(values.size) { null }
+    var start = 0
+    while (start < values.size) {
+        if (values[start] == null) {
+            start++
+            continue
+        }
+        var end = start
+        while (end + 1 < values.size && values[end + 1] != null) end++
+        for (index in start..end) {
+            var weightedTotal = 0.0
+            var weightTotal = 0.0
+            for (near in maxOf(start, index - 2)..minOf(end, index + 2)) {
+                val value = values[near] ?: continue
+                val weight = (3 - kotlin.math.abs(near - index)).toDouble()
+                weightedTotal += value * weight
+                weightTotal += weight
+            }
+            result[index] = if (weightTotal == 0.0) values[index] else weightedTotal / weightTotal
+        }
+        start = end + 1
+    }
+    return result
 }
 
 @Composable
