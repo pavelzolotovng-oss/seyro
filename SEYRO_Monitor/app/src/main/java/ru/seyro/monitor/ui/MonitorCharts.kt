@@ -1,6 +1,8 @@
 package ru.seyro.monitor.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,6 +17,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -169,26 +171,19 @@ fun MetricChart(
             val sliderStartTime = samples.firstOrNull()?.epochMillis ?: startTime
             val sliderEndTime = samples.lastOrNull()?.epochMillis ?: endTime
             val sliderTimeSpan = (sliderEndTime - sliderStartTime).coerceAtLeast(1L)
-            val sliderPosition = selectedSample?.let {
+            val sliderPosition = if (samples.size < 2) 1f else selectedSample?.let {
                 ((it.epochMillis - sliderStartTime).toDouble() / sliderTimeSpan.toDouble()).toFloat().coerceIn(0f, 1f)
             } ?: 1f
-            Slider(
-                value = sliderPosition,
-                onValueChange = { fraction ->
+            ChartScrubber(
+                position = sliderPosition,
+                enabled = samples.size > 1,
+                firstTime = samples.firstOrNull()?.epochMillis?.let { TimeFormat.format(Instant.ofEpochMilli(it)) } ?: "—",
+                lastTime = samples.lastOrNull()?.epochMillis?.let { TimeFormat.format(Instant.ofEpochMilli(it)) } ?: "—",
+                onPositionChange = { fraction ->
                     val target = sliderStartTime + (fraction.toDouble() * sliderTimeSpan.toDouble()).toLong()
                     selectedEpochMillis = samples.indices.minByOrNull { abs(samples[it].epochMillis - target) }
                         ?.let { samples[it].epochMillis }
-                },
-                enabled = samples.size > 1,
-                valueRange = 0f..1f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Blue,
-                    activeTrackColor = Blue,
-                    inactiveTrackColor = Grid,
-                    activeTickColor = Blue,
-                    inactiveTickColor = Grid
-                ),
-                modifier = Modifier.fillMaxWidth().padding(start = 25.dp, end = 1.dp, top = 0.dp, bottom = 0.dp)
+                }
             )
             if (secondValues != null) {
                 Row(Modifier.padding(top = 7.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -197,6 +192,59 @@ fun MetricChart(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ChartScrubber(
+    position: Float,
+    enabled: Boolean,
+    firstTime: String,
+    lastTime: String,
+    onPositionChange: (Float) -> Unit
+) {
+    val density = LocalDensity.current
+    val inset = with(density) { 11.dp.toPx() }
+    val trackColor = if (enabled) Blue else Muted
+    fun positionAt(x: Float, width: Float): Float =
+        ((x - inset) / (width - inset * 2f).coerceAtLeast(1f)).coerceIn(0f, 1f)
+
+    Canvas(
+        Modifier.fillMaxWidth()
+            .height(38.dp)
+            .pointerInput(enabled) {
+                if (enabled) detectTapGestures { point -> onPositionChange(positionAt(point.x, size.width.toFloat())) }
+            }
+            .pointerInput(enabled) {
+                if (enabled) detectDragGestures(
+                    onDragStart = { point -> onPositionChange(positionAt(point.x, size.width.toFloat())) },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        onPositionChange(positionAt(change.position.x, size.width.toFloat()))
+                    }
+                )
+            }
+    ) {
+        val left = inset
+        val right = size.width - inset
+        val centerY = size.height / 2f
+        val thumbX = left + (right - left) * position.coerceIn(0f, 1f)
+        drawLine(Grid, Offset(left, centerY), Offset(right, centerY), strokeWidth = 5.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(trackColor, Offset(left, centerY), Offset(thumbX, centerY), strokeWidth = 5.dp.toPx(), cap = StrokeCap.Round)
+        for (tick in 0..4) {
+            val tickX = left + (right - left) * tick / 4f
+            drawCircle(Color.White.copy(alpha = 0.75f), radius = 1.dp.toPx(), center = Offset(tickX, centerY))
+        }
+        drawCircle(trackColor.copy(alpha = 0.15f), radius = 13.dp.toPx(), center = Offset(thumbX, centerY))
+        drawCircle(Color.White, radius = 9.dp.toPx(), center = Offset(thumbX, centerY))
+        drawCircle(trackColor, radius = 6.dp.toPx(), center = Offset(thumbX, centerY))
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 1.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(firstTime, color = Muted, fontSize = 9.sp)
+        Text(lastTime, color = Muted, fontSize = 9.sp)
     }
 }
 

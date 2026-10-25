@@ -74,7 +74,6 @@ import ru.seyro.monitor.update.UpdateInfo
 import ru.seyro.monitor.update.UpdateRepository
 import java.time.Instant
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -85,7 +84,7 @@ private val Accent = Color(0xFF356AF4)
 private val Green = Color(0xFF17A77A)
 private val Red = Color(0xFFD65B64)
 private val TimeLabel = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
-private val UtcTimeLabel = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC)
+private val MoscowDateTimeLabel = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm").withZone(ZoneId.of("Europe/Moscow"))
 
 @Composable
 fun MonitorScreen() {
@@ -195,7 +194,7 @@ fun MonitorScreen() {
                             }
                         } else if (nodes.isEmpty() && loadError == null) {
                             item { EmptyState("API пока не вернул узлы") }
-                        } else if (nodes.isNotEmpty()) {
+                        } else if (nodes.isNotEmpty() && !overviewExpanded) {
                             item { SectionHeader(nodes.size) }
                             items(nodes, key = { "${it.key.role}:${it.key.id}" }) { node ->
                                 NodeCard(node) { selectedNodeKey = node.key }
@@ -319,7 +318,7 @@ private fun OverviewCard(
     onToggle: () -> Unit
 ) {
     val onlineNodes = nodes.count { it.health == "online" }
-    val userSampleTime = overview?.sampledAt?.let(::formatApiTime)
+    val userSampleTime = overview?.sampledAt?.let(::formatMoscowDateTime)
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(21.dp),
@@ -337,10 +336,10 @@ private fun OverviewCard(
             }
             if (expanded) {
                 Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 7.dp))
-                Text(updated?.let { "Обновлено ${TimeLabel.format(Instant.ofEpochMilli(it))} · каждые 15 сек" } ?: "Ожидание данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                Text(updated?.let { "Обновлено ${MoscowDateTimeLabel.format(Instant.ofEpochMilli(it))} МСК · каждые 15 сек" } ?: "Ожидание данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
                 Text("СОСТОЯНИЕ УЗЛОВ", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp, bottom = 3.dp))
                 nodes.forEachIndexed { index, node ->
-                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE7ECF4)).padding(top = 7.dp))
+                    if (index > 0) Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(Color(0xFFE7ECF4)))
                     InfrastructureNodeStatus(node)
                 }
             }
@@ -376,14 +375,15 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
                     Text(node.name, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(node.city, node.country).joinToString(", ").ifBlank { "${node.key.role.uppercase()} · ID ${node.key.id}" }, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
                 }
-                StatePill("УЗЕЛ", if (node.health == "online") "ОНЛАЙН" else "ОФЛАЙН", if (node.health == "online") Green else Red)
+                val (connectionText, connectionColor) = connectionStatus(node.health)
+                StatePill("СВЯЗЬ", connectionText, connectionColor)
             }
             if (node.metricsStale) StaleNotice(node.sampledAt ?: latest?.sampledAt)
             Row(Modifier.fillMaxWidth().padding(start = 50.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
                 MiniValue("CPU", latest?.cpuPercent?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("RAM", percent(latest?.ramUsedBytes, latest?.ramTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("ДИСК", percent(latest?.diskUsedBytes, latest?.diskTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
-                MiniValue("XRAY", if (node.xrayActive) "Активен" else "Выкл.")
+                MiniValue("XRAY", when (node.xrayActive) { true -> "Активен"; false -> "Выкл."; null -> "—" })
             }
             Text(
                 latest?.sampledAt?.let { formatApiTime(it) }?.let { "Замер $it · нажмите, чтобы открыть графики" } ?: "Нет данных · нажмите для подробностей",
@@ -407,7 +407,8 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
                 Text(node.name, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${node.key.role.uppercase()} · графики и метрики", color = Muted, fontSize = 10.sp)
             }
-            StatePill("УЗЕЛ", if (node.health == "online") "ОНЛАЙН" else "ОФЛАЙН", if (node.health == "online") Green else Red)
+            val (connectionText, connectionColor) = connectionStatus(node.health)
+            StatePill("СВЯЗЬ", connectionText, connectionColor)
         }
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("ПЕРИОД", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -435,21 +436,46 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
 
 @Composable
 private fun InfrastructureNodeStatus(node: ServerNode) {
+    val connection = connectionStatus(node.health)
+    val xray = when (node.xrayActive) {
+        true -> "Xray работает" to Green
+        false -> "Xray остановлен" to Red
+        null -> "Xray: нет данных" to Muted
+    }
+    val (sync, syncColor) = syncLabel(node)
+    val roleName = if (node.key.role == "in") "Входящий IN" else "Выходящий OUT"
+    val place = node.city?.takeIf { it.isNotBlank() } ?: node.name
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("${if (node.key.role == "in") "Входящий IN" else "Выходящий OUT"} · ${node.name}", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                val signal = node.lastSeenAt?.let(::formatApiTime)
-                    ?: (node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)?.let(::formatApiTime)
-                Text(signal?.let { "Последний сигнал: $it" } ?: "Последний сигнал: нет данных", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 3.dp))
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                StatePill(if (node.health == "online" && node.xrayActive) "НА СВЯЗИ" else "СОСТОЯНИЕ", if (node.health == "online" && node.xrayActive) "XRAY РАБОТАЕТ" else if (node.health == "online") "ONLINE" else "ОФЛАЙН", if (node.health == "online" && node.xrayActive) Green else Red)
-                val (syncLabel, syncColor) = syncLabel(node)
-                StatePill("СИНХРОНИЗАЦИЯ", syncLabel, syncColor)
-            }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("$roleName · $place", color = Ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            StatusBadge(connection.first, connection.second)
+            StatusBadge(xray.first, xray.second)
         }
-        SyncInfo(node)
+        val signal = node.lastSeenAt?.let(::formatMoscowDateTime)
+            ?: (node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)?.let(::formatMoscowDateTime)
+        Text(signal?.let { "Последний сигнал: $it МСК" } ?: "Последний сигнал: нет данных", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 6.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            StatusBadge(sync, syncColor)
+            val syncTime = node.syncRanAt?.let(::formatMoscowDateTime)
+            Text(syncTime?.let { "Последняя синхронизация: $it МСК" } ?: "Последняя синхронизация: нет данных", color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        node.syncMessage?.let {
+            Text(it, color = Ink, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+        if (node.enabledTransports.isNotEmpty()) {
+            val protocolLabel = if (node.key.role == "in") "Входящие протоколы" else "Протоколы"
+            Text("$protocolLabel: ${node.enabledTransports.joinToString(" · ")}", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+        if (node.metricsStale) {
+            Text("Метрики устарели", color = Color(0xFFAC6D13), fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+}
+
+@Composable
+private fun StatusBadge(text: String, color: Color) {
+    Surface(color = color.copy(alpha = 0.10f), shape = CircleShape) {
+        Text(text, color = color, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp))
     }
 }
 
@@ -460,35 +486,21 @@ private fun StatePill(label: String, value: String, color: Color) {
     }
 }
 
-@Composable
-private fun SyncInfo(node: ServerNode) {
-    val (label, color) = syncLabel(node)
-    Surface(
-        color = Color(0xFFF5F7FB),
-        shape = RoundedCornerShape(11.dp),
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
-    ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("СИНХРОНИЗАЦИЯ · $label", color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            node.syncRanAt?.let { formatUtcApiTime(it) }?.let { Text("Последняя синхронизация: $it UTC", color = Muted, fontSize = 9.sp) }
-            node.syncMessage?.let { Text(it, color = Ink, fontSize = 10.sp, maxLines = 3, overflow = TextOverflow.Ellipsis) }
-            Text(
-                "Протоколы: ${node.enabledTransports.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "не указаны"}",
-                color = Muted,
-                fontSize = 9.sp
-            )
-            Text("ONLINE означает, что узел недавно ответил и сообщил об активном Xray; доступность с телефона не проверяется.", color = Muted, fontSize = 8.sp)
-        }
-    }
-}
-
 private fun syncLabel(node: ServerNode): Pair<String, Color> = when {
         node.syncPending -> "Ожидается синхронизация" to Color(0xFFAC6D13)
-        node.syncStatus == "success" -> "Синхронизация успешна" to Green
+        node.syncStatus == "success" -> "Синхронизация ОК" to Green
         node.syncStatus == "error" -> "Ошибка синхронизации" to Red
         node.syncStatus == "dry_run" -> "Проверка без применения" to Color(0xFF536A91)
-        else -> "Нет отчёта" to Muted
+        node.syncStatus == null -> "Нет отчёта" to Muted
+        else -> "Статус: ${node.syncStatus}" to Muted
     }
+
+private fun connectionStatus(health: String): Pair<String, Color> = when (health.lowercase()) {
+    "online" -> "На связи" to Green
+    "offline" -> "Нет связи" to Red
+    "unknown", "", "null" -> "Нет данных" to Muted
+    else -> "Статус: $health" to Muted
+}
 
 @Composable
 private fun StaleNotice(sampledAt: String?) {
@@ -604,8 +616,9 @@ private fun formatApiTime(value: String?): String? = value?.let {
     runCatching { TimeLabel.format(Instant.parse(it)) }.getOrNull()
 }
 
-private fun formatUtcApiTime(value: String): String? =
-    runCatching { UtcTimeLabel.format(Instant.parse(value)) }.getOrNull()
+private fun formatMoscowDateTime(value: String?): String? = value?.let {
+    runCatching { MoscowDateTimeLabel.format(Instant.parse(it)) }.getOrNull()
+}
 
 private fun formatRelativeAge(value: String?): String? = value?.let {
     runCatching {
