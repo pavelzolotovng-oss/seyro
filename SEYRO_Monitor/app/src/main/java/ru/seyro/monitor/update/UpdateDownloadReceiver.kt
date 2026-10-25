@@ -20,7 +20,7 @@ object UpdateDownloader {
             .setTitle("SEYRO Monitor ${update.versionName}")
             .setDescription("Загрузка обновления")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, "updates", "seyro-monitor-${update.versionCode}.apk")
+            .setDestinationInExternalFilesDir(context, "updates", "seyro-monitor-${update.versionName}.apk")
         val id = (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(ID, id).putString(SHA, update.sha256).apply()
     }

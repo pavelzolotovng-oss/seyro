@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +32,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -90,6 +92,23 @@ fun MonitorApp() {
     var metricHistory by remember { mutableStateOf<Map<String, List<NodeMetricSample>>>(emptyMap()) }
     var loading by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<String?>(null) }
+    var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
+
+    LaunchedEffect(Unit) {
+        val preferences = context.getSharedPreferences("monitor_app_update", android.content.Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val lastCheck = preferences.getLong("last_update_check_at", 0L)
+        if (now - lastCheck >= UPDATE_CHECK_INTERVAL_MS) {
+            when (val result = UpdateRepository().check(BuildConfig.VERSION_NAME)) {
+                is UpdateCheck.Available -> {
+                    preferences.edit().putLong("last_update_check_at", now).apply()
+                    pendingUpdate = result.update
+                }
+                UpdateCheck.NoUpdate -> preferences.edit().putLong("last_update_check_at", now).apply()
+                is UpdateCheck.Failed -> Unit
+            }
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, _ ->
@@ -188,11 +207,35 @@ fun MonitorApp() {
                     metricHistory = appendSamples(metricHistory, result.nodes)
                     connectionError = null
                 },
-                onConnectionError = { message -> connectionError = message }
+                onConnectionError = { message -> connectionError = message },
+                onUpdateAvailable = { update -> pendingUpdate = update }
             )
         }
     }
+
+    pendingUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { pendingUpdate = null },
+            title = { Text("Доступно обновление") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Новая версия: ${update.versionName}\nУстановлена: ${BuildConfig.VERSION_NAME}")
+                    Text("Обновление установится поверх приложения и сохранит настройки.")
+                    Text(update.releaseNotes)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    UpdateDownloader.start(context, update)
+                    pendingUpdate = null
+                }) { Text("Скачать и установить") }
+            },
+            dismissButton = { TextButton(onClick = { pendingUpdate = null }) { Text("Позже") } }
+        )
+    }
 }
+
+private const val UPDATE_CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -627,7 +670,8 @@ private fun Settings(
     configStore: MonitorConfigStore,
     api: MonitorApi,
     onConnected: (MonitorSnapshot) -> Unit,
-    onConnectionError: (String) -> Unit
+    onConnectionError: (String) -> Unit,
+    onUpdateAvailable: (UpdateInfo) -> Unit
 ) {
     var endpoint by remember(config.baseUrl) { mutableStateOf(config.baseUrl) }
     var token by remember { mutableStateOf("") }
@@ -636,7 +680,6 @@ private fun Settings(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var updateState by remember { mutableStateOf("Проверка ещё не запускалась") }
-    var availableUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -716,21 +759,16 @@ private fun Settings(
             Button(onClick = {
                 scope.launch {
                     updateState = "Проверяем GitHub…"
-                    when (val result = UpdateRepository().check(BuildConfig.VERSION_CODE)) {
-                        UpdateCheck.NoUpdate -> { availableUpdate = null; updateState = "Установлена актуальная версия" }
-                        is UpdateCheck.Available -> { availableUpdate = result.update; updateState = "Доступна версия ${result.update.versionName}" }
-                        is UpdateCheck.Failed -> { availableUpdate = null; updateState = result.message }
+                    when (val result = UpdateRepository().check(BuildConfig.VERSION_NAME)) {
+                        UpdateCheck.NoUpdate -> updateState = "Установлена актуальная версия ${BuildConfig.VERSION_NAME}"
+                        is UpdateCheck.Available -> {
+                            updateState = "Доступна версия ${result.update.versionName}"
+                            onUpdateAvailable(result.update)
+                        }
+                        is UpdateCheck.Failed -> updateState = result.message
                     }
                 }
             }) { Text("Проверить обновления") }
-        }
-        availableUpdate?.let { update ->
-            item {
-                Button(onClick = {
-                    UpdateDownloader.start(context, update)
-                    updateState = "Загрузка началась. После проверки SHA-256 Android предложит установку."
-                }) { Text("Скачать ${update.versionName}") }
-            }
         }
     }
 }
