@@ -166,7 +166,7 @@ fun MetricChart(
                     append(" · ").append(title).append(" ").append(formatMetric(visibleValues.getOrNull(chosenIndex), unit))
                     visibleSecondValues?.let { append(" · OUT ").append(formatMetric(it.getOrNull(chosenIndex), unit)) }
                 }
-                Text(detail, color = Ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 31.dp, top = 6.dp))
+                Text(detail, color = Color(0xFF253149), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 31.dp, top = 6.dp))
             }
             Row(Modifier.fillMaxWidth().padding(start = 31.dp, top = 2.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(TimeFormat.format(Instant.ofEpochMilli(startTime)), color = Muted, fontSize = 10.sp)
