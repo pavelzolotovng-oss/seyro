@@ -67,8 +67,7 @@ jobs:
           export SEYRO_MONITOR_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
           gradle --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk seyro-monitor.apk
-          sha256sum seyro-monitor.apk | awk '{print $1}' > seyro-monitor.apk.sha256
-          echo "sha256=$(cat seyro-monitor.apk.sha256)" >> "$GITHUB_ENV"
+          echo "sha256=$(sha256sum seyro-monitor.apk | awk '{print $1}')" >> "$GITHUB_ENV"
 
       - name: Publish GitHub release
         env:
@@ -76,7 +75,7 @@ jobs:
         run: |
           TAG="seyro-monitor-v$version_name"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "SEYRO Monitor $version_name" --generate-notes
-          gh release upload "$TAG" seyro-monitor.apk seyro-monitor.apk.sha256 --clobber
+          gh release upload "$TAG" seyro-monitor.apk --clobber
 
       - name: Update public manifest on main
         run: |
