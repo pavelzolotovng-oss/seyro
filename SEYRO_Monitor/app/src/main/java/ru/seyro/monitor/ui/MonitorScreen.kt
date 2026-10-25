@@ -75,6 +75,7 @@ import ru.seyro.monitor.update.UpdateInfo
 import ru.seyro.monitor.update.UpdateRepository
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -85,6 +86,7 @@ private val Accent = Color(0xFF356AF4)
 private val Green = Color(0xFF17A77A)
 private val Red = Color(0xFFD65B64)
 private val TimeLabel = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
+private val UtcTimeLabel = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC)
 
 @Composable
 fun MonitorScreen() {
@@ -387,9 +389,13 @@ private fun NodeCard(node: ServerNode, isExpanded: Boolean, rangeMinutes: Int, o
                         modifier = Modifier.padding(top = 3.dp)
                     )
                 }
-                StatusPill(node)
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    StatePill("УЗЕЛ", if (node.health == "online") "ОНЛАЙН" else "ОФЛАЙН", if (node.health == "online") Green else Red)
+                    StatePill("XRAY", if (node.xrayActive) "АКТИВЕН" else "ВЫКЛЮЧЕН", if (node.xrayActive) Green else Red)
+                }
                 Text(if (isExpanded) "⌃" else "⌄", color = Muted, fontSize = 19.sp, modifier = Modifier.padding(start = 9.dp))
             }
+            SyncInfo(node)
             if (node.metricsStale) StaleNotice(node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)
             if (!isExpanded) {
                 Row(Modifier.fillMaxWidth().padding(start = 50.dp, top = 11.dp), horizontalArrangement = Arrangement.spacedBy(13.dp)) {
@@ -417,19 +423,37 @@ private fun NodeCard(node: ServerNode, isExpanded: Boolean, rangeMinutes: Int, o
 }
 
 @Composable
-private fun StatusPill(node: ServerNode) {
-    val text = when {
-        node.metricsStale -> "УСТАРЕЛИ"
-        node.health == "online" -> "ОНЛАЙН"
-        else -> "ОФЛАЙН"
-    }
-    val color = when {
-        node.metricsStale -> Color(0xFFAC6D13)
-        node.health == "online" -> Green
-        else -> Red
-    }
+private fun StatePill(label: String, value: String, color: Color) {
     Surface(color = color.copy(alpha = 0.10f), shape = CircleShape) {
-        Text(text, color = color, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .5.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+        Text("$label $value", color = color, fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = .2.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp))
+    }
+}
+
+@Composable
+private fun SyncInfo(node: ServerNode) {
+    val (label, color) = when {
+        node.syncPending -> "Ожидается синхронизация" to Color(0xFFAC6D13)
+        node.syncStatus == "success" -> "Синхронизация успешна" to Green
+        node.syncStatus == "error" -> "Ошибка синхронизации" to Red
+        node.syncStatus == "dry_run" -> "Проверка без применения" to Color(0xFF536A91)
+        else -> "Нет отчёта" to Muted
+    }
+    Surface(
+        color = Color(0xFFF5F7FB),
+        shape = RoundedCornerShape(11.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+    ) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("СИНХРОНИЗАЦИЯ · $label", color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            node.syncRanAt?.let { formatUtcApiTime(it) }?.let { Text("Последний отчёт: $it UTC", color = Muted, fontSize = 9.sp) }
+            node.syncMessage?.let { Text(it, color = Ink, fontSize = 10.sp, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+            Text(
+                "Протоколы: ${node.enabledTransports.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "не указаны"}",
+                color = Muted,
+                fontSize = 9.sp
+            )
+            Text("Онлайн — узел недавно ответил; доступность с телефона не проверяется.", color = Muted, fontSize = 8.sp)
+        }
     }
 }
 
@@ -547,6 +571,9 @@ private fun formatApiTime(value: String?): String? = value?.let {
     runCatching { TimeLabel.format(Instant.parse(it)) }.getOrNull()
 }
 
+private fun formatUtcApiTime(value: String): String? =
+    runCatching { UtcTimeLabel.format(Instant.parse(value)) }.getOrNull()
+
 private fun formatRelativeAge(value: String?): String? = value?.let {
     runCatching {
         val seconds = (Instant.now().epochSecond - Instant.parse(it).epochSecond).coerceAtLeast(0L)
@@ -557,3 +584,4 @@ private fun formatRelativeAge(value: String?): String? = value?.let {
         }
     }.getOrNull()
 }
+

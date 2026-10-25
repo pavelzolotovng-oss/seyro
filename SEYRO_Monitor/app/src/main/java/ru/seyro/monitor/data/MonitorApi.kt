@@ -62,6 +62,15 @@ object MonitorApi {
                             country = item.optString("country").takeUnless { it == "null" },
                             health = item.optString("health", "unknown"),
                             xrayActive = item.optBoolean("xray_active", false),
+                            syncStatus = item.nullableString("sync_status"),
+                            syncRanAt = item.nullableString("sync_ran_at"),
+                            syncMessage = item.nullableString("sync_message"),
+                            syncPending = item.optBoolean("sync_pending", false),
+                            enabledTransports = item.optJSONArray("enabled_transports")?.let { transports ->
+                                (0 until transports.length()).mapNotNull { transportIndex ->
+                                    transports.optString(transportIndex).takeIf { it.isNotBlank() && it != "null" }
+                                }
+                            }.orEmpty(),
                             metricsStale = item.optBoolean("metrics_stale", false),
                             sampledAt = metrics.optString("sampled_at").takeUnless { it.isBlank() || it == "null" },
                             samples = parseSamples(metrics.optJSONArray("samples"))
@@ -102,8 +111,12 @@ object MonitorApi {
         return (value as? Number)?.toDouble()?.takeIf { it.isFinite() }
     }
 
+    private fun JSONObject.nullableString(name: String): String? = optString(name)
+        .takeUnless { it.isBlank() || it == "null" }
+
     private fun JSONObject.longNumber(name: String): Long? {
         val value = opt(name)
         return (value as? Number)?.toLong()
     }
 }
+

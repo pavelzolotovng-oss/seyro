@@ -22,6 +22,11 @@ data class ServerNode(
     val country: String?,
     val health: String,
     val xrayActive: Boolean,
+    val syncStatus: String?,
+    val syncRanAt: String?,
+    val syncMessage: String?,
+    val syncPending: Boolean,
+    val enabledTransports: List<String>,
     val metricsStale: Boolean,
     val sampledAt: String?,
     val samples: List<MetricSample>
@@ -34,3 +39,4 @@ data class OnlineOverview(
     val sampledAt: String?,
     val stale: Boolean
 )
+
