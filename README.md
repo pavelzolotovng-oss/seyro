@@ -22,6 +22,17 @@
 
 [Исходники SEYRO](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Lite_Light) · [Сборка SEYRO](https://github.com/pavelzolotovng-oss/seyro/actions/workflows/android-apk.yml) · [Релизы SEYRO](https://github.com/pavelzolotovng-oss/seyro/releases)
 
+## SEYRO Monitor — мониторинг серверов
+
+- Исходники Android-приложения: `SEYRO_Monitor/`
+- Ветка разработки и публикации: `main`, рядом с `SEYRO_Lite_Light/`
+- Android Application ID: `ru.seyro.monitor`
+- Первая версия: `0.1`; обновления публикуются отдельными релизами `seyro-monitor-*`
+- Приложение читает системные метрики узлов через существующий FastAPI `GET /api/v1/monitor/nodes`. Новые backend-маршруты не используются.
+- Секундные точки кэшируются только в памяти приложения на 30 минут. Автопроверка обновления при запуске отключена; проверка доступна в настройках приложения.
+
+[Исходники SEYRO Monitor](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Monitor) · [Сборка Monitor](https://github.com/pavelzolotovng-oss/seyro/actions/workflows/seyro-monitor.yml) · [Релизы Monitor](https://github.com/pavelzolotovng-oss/seyro/releases)
+
 > Успешная сборка подтверждает создание APK, но сама по себе не доказывает, что VPN пропускает трафик. После выпуска нужно проверить подключение и открытие сайтов на Android-устройстве.
 
 ## Подпись и обновления

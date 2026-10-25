@@ -1,0 +1,5 @@
+.gradle/
+**/build/
+local.properties
+app/seyro-release.jks
+seyro-monitor.apk

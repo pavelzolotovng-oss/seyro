@@ -1,0 +1,95 @@
+name: Build SEYRO Monitor
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "SEYRO_Monitor/**"
+      - ".github/workflows/seyro-monitor.yml"
+
+concurrency:
+  group: seyro-monitor-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: SEYRO_Monitor
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Validate signing secrets and configure keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository Actions secret for APK signing: $name"
+              exit 1
+            fi
+          done
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/seyro-release.jks
+          test -s app/seyro-release.jks
+          keytool -list -keystore app/seyro-release.jks -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" >/dev/null
+
+      - name: Build signed APK
+        env:
+          SEYRO_MONITOR_KEYSTORE_PATH: ${{ github.workspace }}/SEYRO_Monitor/app/seyro-release.jks
+          SEYRO_MONITOR_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SEYRO_MONITOR_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SEYRO_MONITOR_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk seyro-monitor.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seyro-monitor-0.1-${{ github.run_number }}
+          path: SEYRO_Monitor/seyro-monitor.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish SEYRO Monitor release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: seyro-monitor-v0.1-build-${{ github.run_number }}
+          name: SEYRO Monitor 0.1 (build ${{ github.run_number }})
+          body: |
+            SEYRO Monitor Android app, version 0.1.
+            Built from `main`; reads server metrics through the existing read-only Monitor API.
+          prerelease: false
+          make_latest: false
+          files: SEYRO_Monitor/seyro-monitor.apk
