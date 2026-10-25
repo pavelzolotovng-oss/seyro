@@ -166,13 +166,16 @@ fun MetricChart(
                 Text(TimeFormat.format(Instant.ofEpochMilli(endTime)), color = Muted, fontSize = 10.sp)
             }
             val selectedSample = samples.getOrNull(selectedIndex ?: -1)
+            val sliderStartTime = samples.firstOrNull()?.epochMillis ?: startTime
+            val sliderEndTime = samples.lastOrNull()?.epochMillis ?: endTime
+            val sliderTimeSpan = (sliderEndTime - sliderStartTime).coerceAtLeast(1L)
             val sliderPosition = selectedSample?.let {
-                ((it.epochMillis - startTime).toDouble() / rangeMillis.toDouble()).toFloat().coerceIn(0f, 1f)
+                ((it.epochMillis - sliderStartTime).toDouble() / sliderTimeSpan.toDouble()).toFloat().coerceIn(0f, 1f)
             } ?: 1f
             Slider(
                 value = sliderPosition,
                 onValueChange = { fraction ->
-                    val target = startTime + (fraction.toDouble() * rangeMillis.toDouble()).toLong()
+                    val target = sliderStartTime + (fraction.toDouble() * sliderTimeSpan.toDouble()).toLong()
                     selectedEpochMillis = samples.indices.minByOrNull { abs(samples[it].epochMillis - target) }
                         ?.let { samples[it].epochMillis }
                 },
