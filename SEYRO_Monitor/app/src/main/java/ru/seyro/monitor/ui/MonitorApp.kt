@@ -62,6 +62,7 @@ import ru.seyro.monitor.data.MonitorConfigStore
 import ru.seyro.monitor.data.MonitorNode
 import ru.seyro.monitor.data.MonitorSnapshot
 import ru.seyro.monitor.data.NodeHealth
+import ru.seyro.monitor.data.NodeMetricSample
 import ru.seyro.monitor.data.NodeMetrics
 import ru.seyro.monitor.data.NodeRole
 import ru.seyro.monitor.update.UpdateCheck
@@ -86,7 +87,7 @@ fun MonitorApp() {
     var selectedNode by remember { mutableStateOf<MonitorNode?>(null) }
     var detailNode by remember { mutableStateOf<MonitorNode?>(null) }
     var snapshot by remember { mutableStateOf<MonitorSnapshot?>(null) }
-    var metricHistory by remember { mutableStateOf<Map<String, List<NodeMetrics>>>(emptyMap()) }
+    var metricHistory by remember { mutableStateOf<Map<String, List<NodeMetricSample>>>(emptyMap()) }
     var loading by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<String?>(null) }
 
@@ -393,7 +394,7 @@ private fun fraction(used: Long, total: Long): Float? = if (total > 0) used.toFl
 private fun NodeDetail(
     modifier: Modifier,
     node: MonitorNode?,
-    history: List<NodeMetrics>,
+    history: List<NodeMetricSample>,
     loading: Boolean,
     error: String?,
     onBack: () -> Unit
@@ -437,10 +438,10 @@ private fun NodeDetail(
     }
 }
 
-private data class ChartLine(val name: String, val color: Color, val values: List<Float>)
+private data class ChartLine(val name: String, val color: Color, val values: List<Float?>)
 
 @Composable
-private fun MetricHistory(history: List<NodeMetrics>) {
+private fun MetricHistory(history: List<NodeMetricSample>) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text("ИСТОРИЯ ПОКАЗАТЕЛЕЙ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -453,23 +454,30 @@ private fun MetricHistory(history: List<NodeMetrics>) {
             return
         }
 
-        val cpu = history.mapNotNull { it.cpuPercent?.toFloat() }
-        val ram = history.map { fraction(it.ramUsedBytes, it.ramTotalBytes)?.times(100f) ?: 0f }
-        val disk = history.map { fraction(it.diskUsedBytes, it.diskTotalBytes)?.times(100f) ?: 0f }
-        val rx = history.mapNotNull { it.networkRxBytesPerSec?.toFloat()?.div(1_048_576f) }
-        val tx = history.mapNotNull { it.networkTxBytesPerSec?.toFloat()?.div(1_048_576f) }
+        val times = history.map { it.sampledAt }
+        val cpu = history.map { it.cpuPercent?.toFloat() }
+        val ram = history.map { sample ->
+            sample.ramUsedBytes?.let { used -> sample.ramTotalBytes?.takeIf { it > 0 }?.let { used.toFloat() * 100f / it } }
+        }
+        val disk = history.map { sample ->
+            sample.diskUsedBytes?.let { used -> sample.diskTotalBytes?.takeIf { it > 0 }?.let { used.toFloat() * 100f / it } }
+        }
+        val rx = history.map { it.networkRxBytesPerSec?.toFloat()?.div(1_048_576f) }
+        val tx = history.map { it.networkTxBytesPerSec?.toFloat()?.div(1_048_576f) }
 
-        HistoryChart("CPU", listOf(ChartLine("Загрузка", Color(0xFF72E5C2), cpu)), "%", fixedMax = 100f)
+        HistoryChart("CPU", listOf(ChartLine("Загрузка", Color(0xFF72E5C2), cpu)), "%", times, fixedMax = 100f)
         HistoryChart(
             "Память и диск",
             listOf(ChartLine("RAM", Color(0xFF79BFFF), ram), ChartLine("Диск", Color(0xFFB6A0FF), disk)),
             "%",
+            times,
             fixedMax = 100f
         )
         HistoryChart(
             "Сеть",
             listOf(ChartLine("↓ Вход", Color(0xFF72E5C2), rx), ChartLine("↑ Выход", Color(0xFFFFB86B), tx)),
-            "МБ/с"
+            "МБ/с",
+            times
         )
         Text(
             "${prettyTime(history.first().sampledAt)}  →  ${prettyTime(history.last().sampledAt)} · ${history.size} замеров",
@@ -480,9 +488,9 @@ private fun MetricHistory(history: List<NodeMetrics>) {
 }
 
 @Composable
-private fun HistoryChart(title: String, lines: List<ChartLine>, unit: String, fixedMax: Float? = null) {
+private fun HistoryChart(title: String, lines: List<ChartLine>, unit: String, timestamps: List<String>, fixedMax: Float? = null) {
     val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.48f)
-    val allValues = lines.flatMap { it.values }
+    val allValues = lines.flatMap { it.values }.filterNotNull()
     val hasValues = allValues.isNotEmpty()
     val maxValue = fixedMax ?: ((allValues.maxOrNull() ?: 1f) * 1.15f).coerceAtLeast(0.01f)
     val rangeLabel = when {
@@ -518,19 +526,44 @@ private fun HistoryChart(title: String, lines: List<ChartLine>, unit: String, fi
                         drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), gridStroke)
                     }
                     lines.forEach { line ->
-                        if (line.values.isEmpty()) return@forEach
+                        val presentCount = line.values.count { it != null }
+                        if (presentCount == 0) return@forEach
                         val path = Path()
                         line.values.forEachIndexed { index, value ->
+                            if (value == null) return@forEachIndexed
                             val x = if (line.values.size == 1) size.width / 2f else size.width * index / (line.values.lastIndex.toFloat())
                             val y = size.height - (value / maxValue).coerceIn(0f, 1f) * size.height
-                            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                            if (index == 0 || line.values.getOrNull(index - 1) == null) path.moveTo(x, y) else path.lineTo(x, y)
                         }
-                        if (line.values.size == 1) {
-                            val y = size.height - (line.values.first() / maxValue).coerceIn(0f, 1f) * size.height
-                            drawCircle(line.color, radius = 4.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width / 2f, y))
+                        if (presentCount == 1) {
+                            val index = line.values.indexOfFirst { it != null }
+                            val value = line.values[index]!!
+                            val x = if (line.values.size == 1) size.width / 2f else size.width * index / (line.values.lastIndex.toFloat())
+                            val y = size.height - (value / maxValue).coerceIn(0f, 1f) * size.height
+                            drawCircle(line.color, radius = 4.dp.toPx(), center = androidx.compose.ui.geometry.Offset(x, y))
                         } else {
                             drawPath(path, line.color, style = Stroke(width = 3.dp.toPx()))
                         }
+                    }
+                }
+            }
+            val timeIndexes = when {
+                timestamps.size <= 1 -> timestamps.indices.toList()
+                timestamps.size == 2 -> listOf(0, timestamps.lastIndex)
+                else -> listOf(0, timestamps.lastIndex / 2, timestamps.lastIndex)
+            }
+            if (timeIndexes.size == 1) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(chartTime(timestamps[timeIndexes.single()]), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    timeIndexes.forEach { index ->
+                        Text(
+                            chartTime(timestamps[index]),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -542,7 +575,7 @@ private fun HistoryChart(title: String, lines: List<ChartLine>, unit: String, fi
                     }
                 }
             }
-            if (lines.all { it.values.size < 2 }) {
+            if (lines.all { line -> line.values.count { it != null } < 2 }) {
                 Text("Для линии графика ждём следующий замер.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -559,15 +592,33 @@ private fun axisTick(value: Float, unit: String, maxValue: Float): String = when
 
 private fun nodeHistoryKey(node: MonitorNode): String = "${node.role}-${node.id}"
 
-private fun appendSample(history: Map<String, List<NodeMetrics>>, key: String, sample: NodeMetrics?): Map<String, List<NodeMetrics>> {
-    if (sample == null) return history
-    val samples = history[key].orEmpty()
-    if (samples.lastOrNull()?.sampledAt == sample.sampledAt) return history
-    return history + (key to (samples + sample).takeLast(60))
+private fun appendSample(history: Map<String, List<NodeMetricSample>>, key: String, metrics: NodeMetrics?): Map<String, List<NodeMetricSample>> {
+    if (metrics == null) return history
+    val latest = NodeMetricSample(
+        cpuPercent = metrics.cpuPercent,
+        ramUsedBytes = metrics.ramUsedBytes,
+        ramTotalBytes = metrics.ramTotalBytes,
+        diskUsedBytes = metrics.diskUsedBytes,
+        diskTotalBytes = metrics.diskTotalBytes,
+        networkRxBytesPerSec = metrics.networkRxBytesPerSec,
+        networkTxBytesPerSec = metrics.networkTxBytesPerSec,
+        sampledAt = metrics.sampledAt
+    )
+    val incoming = (metrics.samples + latest).associateBy { sampleTimeKey(it.sampledAt) }
+    val seen = history[key].orEmpty().mapTo(mutableSetOf()) { sampleTimeKey(it.sampledAt) }
+    val additions = incoming.values.filter { seen.add(sampleTimeKey(it.sampledAt)) }.sortedBy { it.sampledAt }
+    if (additions.isEmpty()) return history
+    return history + (key to (history[key].orEmpty() + additions).takeLast(MAX_HISTORY_POINTS))
 }
 
-private fun appendSamples(history: Map<String, List<NodeMetrics>>, nodes: List<MonitorNode>): Map<String, List<NodeMetrics>> =
+private fun appendSamples(history: Map<String, List<NodeMetricSample>>, nodes: List<MonitorNode>): Map<String, List<NodeMetricSample>> =
     nodes.fold(history) { current, node -> appendSample(current, nodeHistoryKey(node), node.metrics) }
+
+private fun sampleTimeKey(value: String): String = value.take(19)
+
+private fun chartTime(value: String): String = value.substringAfter('T', value).take(8) + "Z"
+
+private const val MAX_HISTORY_POINTS = 900
 
 @Composable
 private fun Settings(

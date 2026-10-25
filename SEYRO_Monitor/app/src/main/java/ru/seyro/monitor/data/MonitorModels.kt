@@ -44,6 +44,18 @@ data class NodeMetrics(
     val networkRxBytesPerSec: Double?,
     val networkTxBytesPerSec: Double?,
     val uptimeSeconds: Long,
+    val sampledAt: String,
+    val samples: List<NodeMetricSample> = emptyList()
+)
+
+data class NodeMetricSample(
+    val cpuPercent: Double?,
+    val ramUsedBytes: Long?,
+    val ramTotalBytes: Long?,
+    val diskUsedBytes: Long?,
+    val diskTotalBytes: Long?,
+    val networkRxBytesPerSec: Double?,
+    val networkTxBytesPerSec: Double?,
     val sampledAt: String
 )
 

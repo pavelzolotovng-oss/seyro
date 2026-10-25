@@ -130,6 +130,21 @@ class MonitorApi {
         networkRxBytesPerSec = json.nullableDouble("network_rx_bytes_per_sec"),
         networkTxBytesPerSec = json.nullableDouble("network_tx_bytes_per_sec"),
         uptimeSeconds = json.getLong("uptime_seconds"),
+        sampledAt = json.getString("sampled_at"),
+        samples = json.optJSONArray("samples")?.let { items ->
+            List(minOf(items.length(), MAX_SAMPLES_PER_RESPONSE)) { index -> parseMetricSample(items.getJSONObject(index)) }
+                .sortedBy { it.sampledAt }
+        }.orEmpty()
+    )
+
+    private fun parseMetricSample(json: JSONObject) = NodeMetricSample(
+        cpuPercent = json.nullableDouble("cpu_percent"),
+        ramUsedBytes = json.nullableLong("ram_used_bytes"),
+        ramTotalBytes = json.nullableLong("ram_total_bytes"),
+        diskUsedBytes = json.nullableLong("disk_used_bytes"),
+        diskTotalBytes = json.nullableLong("disk_total_bytes"),
+        networkRxBytesPerSec = json.nullableDouble("network_rx_bytes_per_sec"),
+        networkTxBytesPerSec = json.nullableDouble("network_tx_bytes_per_sec"),
         sampledAt = json.getString("sampled_at")
     )
 
@@ -148,11 +163,14 @@ class MonitorApi {
 
     private fun JSONObject.nullableInt(key: String): Int? = if (isNull(key)) null else getInt(key)
 
+    private fun JSONObject.nullableLong(key: String): Long? = if (isNull(key)) null else getLong(key)
+
     private fun JSONArray.toStringList(): List<String> = List(length()) { index -> getString(index) }
 
     private class HttpApiException(message: String) : IOException(message)
 
     private companion object {
         const val TIMEOUT_MS = 12_000
+        const val MAX_SAMPLES_PER_RESPONSE = 20
     }
 }
