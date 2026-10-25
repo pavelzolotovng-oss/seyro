@@ -99,18 +99,23 @@ fun MonitorApp() {
     }
 
     suspend fun refreshCurrent() {
-        if (config.token.isBlank() || screen == Screen.SETTINGS || !refreshMutex.tryLock()) return
+        if (config.token.isBlank() || !refreshMutex.tryLock()) return
         loading = true
         connectionError = null
         try {
             when (screen) {
-                Screen.OVERVIEW -> snapshot = api.load(config)
-                Screen.NODE_DETAIL -> selectedNode?.let { node ->
-                    val updated = api.loadNode(config, node.role, node.id)
-                    detailNode = updated
-                    metricHistory = appendSample(metricHistory, nodeHistoryKey(node), updated.metrics)
+                Screen.OVERVIEW -> {
+                    val updated = api.load(config)
+                    snapshot = updated
+                    metricHistory = appendSamples(metricHistory, updated.nodes)
                 }
-                Screen.SETTINGS -> Unit
+                Screen.NODE_DETAIL, Screen.SETTINGS -> {
+                    val nodes = api.loadNodes(config)
+                    metricHistory = appendSamples(metricHistory, nodes)
+                    selectedNode?.let { selected ->
+                        detailNode = nodes.firstOrNull { it.role == selected.role && it.id == selected.id } ?: detailNode
+                    }
+                }
             }
         } catch (error: Exception) {
             connectionError = error.message ?: "Не удалось получить данные сервера"
@@ -120,8 +125,8 @@ fun MonitorApp() {
         }
     }
 
-    LaunchedEffect(screen, selectedNode?.id, config.baseUrl, config.token, appVisible) {
-        if (!appVisible || config.token.isBlank() || screen == Screen.SETTINGS) return@LaunchedEffect
+    LaunchedEffect(screen, selectedNode?.role, selectedNode?.id, config.baseUrl, config.token, appVisible) {
+        if (!appVisible || config.token.isBlank()) return@LaunchedEffect
         while (true) {
             refreshCurrent()
             delay(15_000)
@@ -179,6 +184,7 @@ fun MonitorApp() {
                 api = api,
                 onConnected = { result ->
                     snapshot = result
+                    metricHistory = appendSamples(metricHistory, result.nodes)
                     connectionError = null
                 },
                 onConnectionError = { message -> connectionError = message }
@@ -559,6 +565,9 @@ private fun appendSample(history: Map<String, List<NodeMetrics>>, key: String, s
     if (samples.lastOrNull()?.sampledAt == sample.sampledAt) return history
     return history + (key to (samples + sample).takeLast(60))
 }
+
+private fun appendSamples(history: Map<String, List<NodeMetrics>>, nodes: List<MonitorNode>): Map<String, List<NodeMetrics>> =
+    nodes.fold(history) { current, node -> appendSample(current, nodeHistoryKey(node), node.metrics) }
 
 @Composable
 private fun Settings(

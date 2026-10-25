@@ -14,11 +14,14 @@ class MonitorApi {
         require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Доступ»" }
         val baseUrl = config.baseUrl.trim().trimEnd('/')
         val overview = parseOverview(getJson(baseUrl, config.token, "/api/v1/monitor/overview"))
-        val nodesResponse = getJson(baseUrl, config.token, "/api/v1/monitor/nodes")
-        val nodesJson = nodesResponse.getJSONArray("items")
-        val nodes = List(nodesJson.length()) { index -> parseNode(nodesJson.getJSONObject(index)) }
+        val nodes = loadNodes(baseUrl, config.token)
         val system = parseSystem(getJson(baseUrl, config.token, "/api/v1/monitor/system/status"))
         MonitorSnapshot(overview, nodes, system)
+    }
+
+    suspend fun loadNodes(config: MonitorConfig): List<MonitorNode> = withContext(Dispatchers.IO) {
+        require(config.token.isNotBlank()) { "Сначала введите monitor-token в разделе «Доступ»" }
+        loadNodes(config.baseUrl.trim().trimEnd('/'), config.token)
     }
 
     suspend fun loadNode(config: MonitorConfig, role: NodeRole, nodeId: Long): MonitorNode = withContext(Dispatchers.IO) {
@@ -81,6 +84,11 @@ class MonitorApi {
         onlineUsersSampledAt = json.nullableString("online_users_sampled_at"),
         onlineUsersStale = json.optBoolean("online_users_stale", true)
     )
+
+    private fun loadNodes(baseUrl: String, token: String): List<MonitorNode> {
+        val items = getJson(baseUrl, token, "/api/v1/monitor/nodes").getJSONArray("items")
+        return List(items.length()) { index -> parseNode(items.getJSONObject(index)) }
+    }
 
     private fun parseNode(json: JSONObject): MonitorNode = MonitorNode(
         id = json.getLong("id"),
