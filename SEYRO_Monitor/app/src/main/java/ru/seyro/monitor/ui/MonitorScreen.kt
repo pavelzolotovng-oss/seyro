@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,7 +36,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -103,9 +103,9 @@ fun MonitorScreen() {
     var historyStartAt by remember { mutableStateOf(0L) }
     var statisticsClearedMessage by remember { mutableStateOf<String?>(null) }
     var selectedRangeMinutes by remember { mutableStateOf(15) }
+    var selectedNodeKey by remember { mutableStateOf<ServerKey?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
-    val expanded = remember { mutableStateMapOf<ServerKey, Boolean>() }
     var showSettings by remember { mutableStateOf(config.token.isBlank()) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -160,11 +160,21 @@ fun MonitorScreen() {
         }
     }
 
+    val selectedNode = nodes.firstOrNull { it.key == selectedNodeKey }
+
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = Page) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
+            if (selectedNode != null) {
+                NodeDetailScreen(
+                    node = selectedNode,
+                    rangeMinutes = selectedRangeMinutes,
+                    onRangeSelected = { selectedRangeMinutes = it },
+                    onBack = { selectedNodeKey = null }
+                )
+            } else Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
                 Header(onSettings = { showSettings = true })
                 if (config.token.isNotBlank()) {
+                    OverviewCard(nodes, lastUpdated, overview, overviewExpanded) { overviewExpanded = !overviewExpanded }
                     if (loadError != null) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1)),
@@ -187,18 +197,9 @@ fun MonitorScreen() {
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            item {
-                                OverviewCard(
-                                    nodes = nodes,
-                                    updated = lastUpdated,
-                                    overview = overview,
-                                    expanded = overviewExpanded,
-                                    expandedNodes = expanded,
-                                    rangeMinutes = selectedRangeMinutes,
-                                    onRangeSelected = { selectedRangeMinutes = it },
-                                    onNodeToggle = { key -> expanded[key] = expanded[key] != true },
-                                    onToggle = { overviewExpanded = !overviewExpanded }
-                                )
+                            item { SectionHeader(nodes.size) }
+                            items(nodes, key = { "${it.key.role}:${it.key.id}" }) { node ->
+                                NodeCard(node) { selectedNodeKey = node.key }
                             }
                             item { Footer() }
                         }
@@ -316,10 +317,6 @@ private fun OverviewCard(
     updated: Long?,
     overview: OnlineOverview?,
     expanded: Boolean,
-    expandedNodes: Map<ServerKey, Boolean>,
-    rangeMinutes: Int,
-    onRangeSelected: (Int) -> Unit,
-    onNodeToggle: (ServerKey) -> Unit,
     onToggle: () -> Unit
 ) {
     val onlineNodes = nodes.count { it.health == "online" }
@@ -342,23 +339,10 @@ private fun OverviewCard(
             if (expanded) {
                 Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 7.dp))
                 Text(updated?.let { "Обновлено ${TimeLabel.format(Instant.ofEpochMilli(it))} · каждые 15 сек" } ?: "Ожидание данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
-                Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("УЗЛЫ · ${nodes.size}", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    listOf(5, 15, 30).forEach { minutes ->
-                        val selected = minutes == rangeMinutes
-                        Surface(
-                            color = if (selected) Accent else Color(0xFFF1F4F9),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.padding(start = 5.dp).clickable { onRangeSelected(minutes) }
-                        ) {
-                            Text("${minutes}м", color = if (selected) Color.White else Ink, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
-                        }
-                    }
-                }
-                Text("Среднее, минимум и максимум — по истории в памяти (до 30 минут)", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(bottom = 5.dp))
+                Text("СОСТОЯНИЕ УЗЛОВ", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp, bottom = 3.dp))
                 nodes.forEachIndexed { index, node ->
-                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE7ECF4)))
-                    NodeCard(node, expandedNodes[node.key] == true, rangeMinutes) { onNodeToggle(node.key) }
+                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE7ECF4)).padding(top = 7.dp))
+                    InfrastructureNodeStatus(node)
                 }
             }
         }
@@ -366,59 +350,109 @@ private fun OverviewCard(
 }
 
 @Composable
-private fun NodeCard(node: ServerNode, isExpanded: Boolean, rangeMinutes: Int, onToggle: () -> Unit) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            Row(Modifier.fillMaxWidth().clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
+private fun SectionHeader(count: Int) {
+    Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("СЕРВЕРЫ", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(8.dp))
+        Text(count.toString(), color = Muted, fontSize = 10.sp)
+        Spacer(Modifier.weight(1f))
+        Text("Автообновление 15 с", color = Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
+    val latest = node.samples.lastOrNull()
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(if (node.key.role == "in") Color(0xFFEAF0FF) else Color(0xFFF0EBFF)), contentAlignment = Alignment.Center) {
-                    Text(if (node.key.role == "in") "IN" else "OUT", color = if (node.key.role == "in") Accent else Color(0xFF8056DC), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(node.key.role.uppercase(), color = if (node.key.role == "in") Accent else Color(0xFF8056DC), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(Modifier.weight(1f).padding(start = 11.dp)) {
                     Text(node.name, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(node.city, node.country).joinToString(", ").ifBlank { "${node.key.role.uppercase()} · ID ${node.key.id}" }, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
-                    val sampledAt = node.sampledAt ?: node.samples.lastOrNull()?.sampledAt
-                    val nodeSampleTime = formatApiTime(sampledAt)
-                    val nodeAge = formatRelativeAge(sampledAt)
-                    Text(
-                        when {
-                            nodeSampleTime == null -> "Данные ещё не получены"
-                            nodeAge == null -> "Данные получены: $nodeSampleTime"
-                            else -> "Данные: $nodeSampleTime · $nodeAge"
-                        },
-                        color = if (node.metricsStale) Color(0xFFAC6D13) else Muted,
-                        fontSize = 9.sp,
-                        modifier = Modifier.padding(top = 3.dp)
-                    )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    StatePill("УЗЕЛ", if (node.health == "online") "ОНЛАЙН" else "ОФЛАЙН", if (node.health == "online") Green else Red)
-                    StatePill("XRAY", if (node.xrayActive) "АКТИВЕН" else "ВЫКЛЮЧЕН", if (node.xrayActive) Green else Red)
-                }
-                Text(if (isExpanded) "⌃" else "⌄", color = Muted, fontSize = 19.sp, modifier = Modifier.padding(start = 9.dp))
+                StatePill("УЗЕЛ", if (node.health == "online") "ОНЛАЙН" else "ОФЛАЙН", if (node.health == "online") Green else Red)
             }
-            SyncInfo(node)
-            if (node.metricsStale) StaleNotice(node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)
-            if (!isExpanded) {
-                Row(Modifier.fillMaxWidth().padding(start = 50.dp, top = 11.dp), horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                    MiniValue("CPU", node.samples.lastOrNull()?.cpuPercent?.let { "${it.toInt()}%" } ?: "—")
-                    MiniValue("RAM", percent(node.samples.lastOrNull()?.ramUsedBytes, node.samples.lastOrNull()?.ramTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
-                    MiniValue("ДИСК", percent(node.samples.lastOrNull()?.diskUsedBytes, node.samples.lastOrNull()?.diskTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
-                }
+            if (node.metricsStale) StaleNotice(node.sampledAt ?: latest?.sampledAt)
+            Row(Modifier.fillMaxWidth().padding(start = 50.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
+                MiniValue("CPU", latest?.cpuPercent?.let { "${it.toInt()}%" } ?: "—")
+                MiniValue("RAM", percent(latest?.ramUsedBytes, latest?.ramTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
+                MiniValue("ДИСК", percent(latest?.diskUsedBytes, latest?.diskTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
+                MiniValue("XRAY", if (node.xrayActive) "Активен" else "Выкл.")
             }
-            if (isExpanded) {
-                if (node.samples.isEmpty()) {
-                    Text("Нет данных · ждём пакет секундных замеров", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 16.dp, bottom = 5.dp))
-                } else {
-                    val p = node.samples
-                    MetricChart("CPU", "%", p, p.map { it.cpuPercent }, rangeMinutes, fixedMaximum = 100.0)
-                    MetricChart("RAM", "%", p, p.map { percent(it.ramUsedBytes, it.ramTotalBytes) }, rangeMinutes, fixedMaximum = 100.0)
-                    MetricChart("Диск", "%", p, p.map { percent(it.diskUsedBytes, it.diskTotalBytes) }, rangeMinutes, fixedMaximum = 100.0)
-                    MetricChart("Сеть", "Б/с", p, p.map { it.networkRxBytesPerSec }, rangeMinutes, secondValues = p.map { it.networkTxBytesPerSec }, secondLabel = "OUT")
-                    val cutoff = System.currentTimeMillis() - rangeMinutes * 60_000L
-                    val visiblePointCount = p.count { it.epochMillis >= cutoff }
-                    Text("$visiblePointCount точек за ${rangeMinutes} минут", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                latest?.sampledAt?.let { formatApiTime(it) }?.let { "Замер $it · нажмите, чтобы открыть графики" } ?: "Нет данных · нажмите для подробностей",
+                color = Muted,
+                fontSize = 9.sp,
+                modifier = Modifier.padding(start = 50.dp, top = 7.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelected: (Int) -> Unit, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = 18.dp)) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp).clickable(onClick = onBack)) {
+                Box(contentAlignment = Alignment.Center) { Text("‹", color = Ink, fontSize = 27.sp) }
+            }
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(node.name, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${node.key.role.uppercase()} · графики и метрики", color = Muted, fontSize = 10.sp)
+            }
+            StatePill("УЗЕЛ", if (node.health == "online") "ОНЛАЙН" else "ОФЛАЙН", if (node.health == "online") Green else Red)
+        }
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("ПЕРИОД", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            listOf(5, 15, 30).forEach { minutes ->
+                val selected = minutes == rangeMinutes
+                Surface(color = if (selected) Accent else Color.White, shape = RoundedCornerShape(9.dp), modifier = Modifier.padding(start = 6.dp).clickable { onRangeSelected(minutes) }) {
+                    Text("${minutes}м", color = if (selected) Color.White else Ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                 }
             }
         }
+        if (node.metricsStale) StaleNotice(node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)
+        if (node.samples.isEmpty()) {
+            EmptyState("Нет данных · ждём пакет секундных замеров")
+        } else {
+            val points = node.samples
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                item { MetricChart("CPU", "%", points, points.map { it.cpuPercent }, rangeMinutes, fixedMaximum = 100.0) }
+                item { MetricChart("RAM", "%", points, points.map { percent(it.ramUsedBytes, it.ramTotalBytes) }, rangeMinutes, fixedMaximum = 100.0) }
+                item { MetricChart("Диск", "%", points, points.map { percent(it.diskUsedBytes, it.diskTotalBytes) }, rangeMinutes, fixedMaximum = 100.0) }
+                item { MetricChart("Сеть", "Б/с", points, points.map { it.networkRxBytesPerSec }, rangeMinutes, secondValues = points.map { it.networkTxBytesPerSec }, secondLabel = "OUT") }
+                item { SyncInfo(node) }
+                item { Footer() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfrastructureNodeStatus(node: ServerNode) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("${if (node.key.role == "in") "Входящий IN" else "Выходящий OUT"} · ${node.name}", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                val signal = node.lastSeenAt?.let(::formatApiTime)
+                    ?: (node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)?.let(::formatApiTime)
+                Text(signal?.let { "Последний сигнал: $it" } ?: "Последний сигнал: нет данных", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 3.dp))
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                StatePill(if (node.health == "online" && node.xrayActive) "НА СВЯЗИ" else "СОСТОЯНИЕ", if (node.health == "online" && node.xrayActive) "XRAY РАБОТАЕТ" else if (node.health == "online") "ONLINE" else "ОФЛАЙН", if (node.health == "online" && node.xrayActive) Green else Red)
+                val (syncLabel, syncColor) = syncLabel(node)
+                StatePill("СИНХРОНИЗАЦИЯ", syncLabel, syncColor)
+            }
+        }
+        SyncInfo(node)
+    }
 }
 
 @Composable
@@ -430,13 +464,7 @@ private fun StatePill(label: String, value: String, color: Color) {
 
 @Composable
 private fun SyncInfo(node: ServerNode) {
-    val (label, color) = when {
-        node.syncPending -> "Ожидается синхронизация" to Color(0xFFAC6D13)
-        node.syncStatus == "success" -> "Синхронизация успешна" to Green
-        node.syncStatus == "error" -> "Ошибка синхронизации" to Red
-        node.syncStatus == "dry_run" -> "Проверка без применения" to Color(0xFF536A91)
-        else -> "Нет отчёта" to Muted
-    }
+    val (label, color) = syncLabel(node)
     Surface(
         color = Color(0xFFF5F7FB),
         shape = RoundedCornerShape(11.dp),
@@ -444,7 +472,7 @@ private fun SyncInfo(node: ServerNode) {
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text("СИНХРОНИЗАЦИЯ · $label", color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            node.syncRanAt?.let { formatUtcApiTime(it) }?.let { Text("Последний отчёт: $it UTC", color = Muted, fontSize = 9.sp) }
+            node.syncRanAt?.let { formatUtcApiTime(it) }?.let { Text("Последняя синхронизация: $it UTC", color = Muted, fontSize = 9.sp) }
             node.syncMessage?.let { Text(it, color = Ink, fontSize = 10.sp, maxLines = 3, overflow = TextOverflow.Ellipsis) }
             Text(
                 "Протоколы: ${node.enabledTransports.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "не указаны"}",
@@ -455,6 +483,14 @@ private fun SyncInfo(node: ServerNode) {
         }
     }
 }
+
+private fun syncLabel(node: ServerNode): Pair<String, Color> = when {
+        node.syncPending -> "Ожидается синхронизация" to Color(0xFFAC6D13)
+        node.syncStatus == "success" -> "Синхронизация успешна" to Green
+        node.syncStatus == "error" -> "Ошибка синхронизации" to Red
+        node.syncStatus == "dry_run" -> "Проверка без применения" to Color(0xFF536A91)
+        else -> "Нет отчёта" to Muted
+    }
 
 @Composable
 private fun StaleNotice(sampledAt: String?) {

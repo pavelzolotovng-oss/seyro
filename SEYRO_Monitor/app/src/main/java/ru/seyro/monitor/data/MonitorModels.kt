@@ -21,6 +21,7 @@ data class ServerNode(
     val city: String?,
     val country: String?,
     val health: String,
+    val lastSeenAt: String?,
     val xrayActive: Boolean,
     val syncStatus: String?,
     val syncRanAt: String?,

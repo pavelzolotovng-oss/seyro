@@ -61,6 +61,7 @@ object MonitorApi {
                             city = item.optString("city").takeUnless { it == "null" },
                             country = item.optString("country").takeUnless { it == "null" },
                             health = item.optString("health", "unknown"),
+                            lastSeenAt = item.nullableString("last_seen_at"),
                             xrayActive = item.optBoolean("xray_active", false),
                             syncStatus = item.nullableString("sync_status"),
                             syncRanAt = item.nullableString("sync_ran_at"),
