@@ -8,14 +8,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -61,10 +62,10 @@ fun MetricChart(
     val visibleSecondValues = secondValues?.let { series -> visible.map { series.getOrNull(it.index) } }
     val allValues = visibleValues + (visibleSecondValues ?: emptyList())
     val maxValue = fixedMaximum ?: dynamicMaximum(allValues)
-    val selectedIndex = remember(samples) { mutableIntStateOf(-1) }
-    val density = LocalDensity.current
-    val chartLeftPx = with(density) { 31.dp.toPx() }
-    val chartRightPaddingPx = with(density) { 4.dp.toPx() }
+    var selectedEpochMillis by remember { mutableStateOf<Long?>(null) }
+    val selectedIndex = selectedEpochMillis?.let { selectedAt ->
+        samples.indices.minByOrNull { abs(samples[it].epochMillis - selectedAt) }
+    } ?: samples.lastIndex.takeIf { it >= 0 }
     Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(title, color = Color(0xFF253149), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
@@ -79,16 +80,7 @@ fun MetricChart(
                 SeriesStats(points, values, unit = unit, label = "ВХОДЯЩАЯ", color = Blue)
                 SeriesStats(points, secondValues.orEmpty(), unit = unit, label = "ИСХОДЯЩАЯ", color = Violet)
             }
-            Canvas(
-                Modifier.fillMaxWidth().height(112.dp).padding(top = 10.dp).pointerInput(samples, startTime, rangeMillis) {
-                    detectTapGestures { offset ->
-                        val plotWidth = (size.width.toFloat() - chartLeftPx - chartRightPaddingPx).coerceAtLeast(1f)
-                        val fraction = ((offset.x - chartLeftPx) / plotWidth).coerceIn(0f, 1f)
-                        val touchedAt = startTime + (fraction.toDouble() * rangeMillis.toDouble()).toLong()
-                        selectedIndex.intValue = samples.indices.minByOrNull { abs(samples[it].epochMillis - touchedAt) } ?: -1
-                    }
-                }
-            ) {
+            Canvas(Modifier.fillMaxWidth().height(112.dp).padding(top = 10.dp)) {
                 val left = 31.dp.toPx()
                 val right = size.width - 4.dp.toPx()
                 val top = 5.dp.toPx()
@@ -144,14 +136,14 @@ fun MetricChart(
                         }
                     }
                     drawRun()
-                    val chosenIndex = selectedIndex.intValue
+                    val chosenIndex = selectedIndex ?: -1
                     val rawValue = series.getOrNull(chosenIndex)
                     if (chosenIndex in samples.indices && rawValue != null) {
                         val y = bottom - chartHeight * (rawValue / maxValue).coerceIn(0.0, 1.0).toFloat()
                         drawCircle(color, radius = 4.dp.toPx(), center = Offset(x(chosenIndex), y))
                     }
                 }
-                val chosenIndex = selectedIndex.intValue
+                val chosenIndex = selectedIndex ?: -1
                 if (chosenIndex in samples.indices) {
                     val selectedX = x(chosenIndex)
                     drawLine(Color(0xFF8794A8), Offset(selectedX, top), Offset(selectedX, bottom), strokeWidth = 1.dp.toPx())
@@ -159,20 +151,42 @@ fun MetricChart(
                 drawSeries(visibleValues, Blue)
                 visibleSecondValues?.let { drawSeries(it, Violet) }
             }
-            val chosenIndex = selectedIndex.intValue
+            val chosenIndex = selectedIndex ?: -1
             if (chosenIndex in samples.indices) {
                 val detail = buildString {
                     append(TimeFormat.format(Instant.ofEpochMilli(samples[chosenIndex].epochMillis)))
-                    append(" · ").append(title).append(" ").append(formatMetric(visibleValues.getOrNull(chosenIndex), unit))
-                    visibleSecondValues?.let { append(" · OUT ").append(formatMetric(it.getOrNull(chosenIndex), unit)) }
+                    append("  ·  ").append(title).append(" ").append(formatMetric(visibleValues.getOrNull(chosenIndex), unit))
+                    visibleSecondValues?.let { append("  ·  OUT ").append(formatMetric(it.getOrNull(chosenIndex), unit)) }
                 }
-                Text(detail, color = Color(0xFF253149), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 31.dp, top = 6.dp))
+                Text(detail, color = Color(0xFF253149), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 31.dp, top = 5.dp))
             }
             Row(Modifier.fillMaxWidth().padding(start = 31.dp, top = 2.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(TimeFormat.format(Instant.ofEpochMilli(startTime)), color = Muted, fontSize = 10.sp)
                 Text(TimeFormat.format(Instant.ofEpochMilli(startTime + rangeMillis / 2)), color = Muted, fontSize = 10.sp)
                 Text(TimeFormat.format(Instant.ofEpochMilli(endTime)), color = Muted, fontSize = 10.sp)
             }
+            val selectedSample = samples.getOrNull(selectedIndex ?: -1)
+            val sliderPosition = selectedSample?.let {
+                ((it.epochMillis - startTime).toDouble() / rangeMillis.toDouble()).toFloat().coerceIn(0f, 1f)
+            } ?: 1f
+            Slider(
+                value = sliderPosition,
+                onValueChange = { fraction ->
+                    val target = startTime + (fraction.toDouble() * rangeMillis.toDouble()).toLong()
+                    selectedEpochMillis = samples.indices.minByOrNull { abs(samples[it].epochMillis - target) }
+                        ?.let { samples[it].epochMillis }
+                },
+                enabled = samples.size > 1,
+                valueRange = 0f..1f,
+                colors = SliderDefaults.colors(
+                    thumbColor = Blue,
+                    activeTrackColor = Blue,
+                    inactiveTrackColor = Grid,
+                    activeTickColor = Blue,
+                    inactiveTickColor = Grid
+                ),
+                modifier = Modifier.fillMaxWidth().padding(start = 25.dp, end = 1.dp, top = 0.dp, bottom = 0.dp)
+            )
             if (secondValues != null) {
                 Row(Modifier.padding(top = 7.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Legend(color = Blue, label = "↓ Входящая")
@@ -282,3 +296,4 @@ fun formatRate(value: Double): String = when {
     value >= 1024.0 -> "${"%.1f".format(value / 1024.0)} КБ/с"
     else -> "${value.toInt()} Б/с"
 }
+
