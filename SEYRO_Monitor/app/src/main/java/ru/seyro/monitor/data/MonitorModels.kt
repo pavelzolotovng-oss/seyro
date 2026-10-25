@@ -28,3 +28,9 @@ data class ServerNode(
 )
 
 data class MonitorConfig(val apiBase: String, val token: String)
+
+data class OnlineOverview(
+    val onlineUsers: Int?,
+    val sampledAt: String?,
+    val stale: Boolean
+)

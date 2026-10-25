@@ -7,6 +7,31 @@ import java.net.URL
 import java.time.Instant
 
 object MonitorApi {
+    fun fetchOverview(config: MonitorConfig): OnlineOverview {
+        val base = config.apiBase.trim().trimEnd('/')
+        require(base.startsWith("https://", ignoreCase = true)) { "Адрес API должен начинаться с https://" }
+        val connection = (URL("$base/api/v1/monitor/overview").openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Authorization", "Bearer ${config.token}")
+        }
+        try {
+            val status = connection.responseCode
+            if (status !in 200..299) throw IllegalStateException("API обзора ответил HTTP $status")
+            val body = JSONObject(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+            val usersValue = body.opt("online_users")
+            val users = (usersValue as? Number)?.toInt()
+            val sampledAt = sequenceOf("sampled_at", "online_users_sampled_at", "generated_at")
+                .map { body.optString(it) }
+                .firstOrNull { it.isNotBlank() && it != "null" }
+            return OnlineOverview(users, sampledAt, body.optBoolean("online_users_stale", false))
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     fun fetchNodes(config: MonitorConfig): List<ServerNode> {
         val base = config.apiBase.trim().trimEnd('/')
         require(base.startsWith("https://", ignoreCase = true)) { "Адрес API должен начинаться с https://" }

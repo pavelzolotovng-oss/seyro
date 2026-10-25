@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -67,6 +68,7 @@ import ru.seyro.monitor.data.MetricSample
 import ru.seyro.monitor.data.MonitorApi
 import ru.seyro.monitor.data.MonitorConfig
 import ru.seyro.monitor.data.MonitorConfigStore
+import ru.seyro.monitor.data.OnlineOverview
 import ru.seyro.monitor.data.ServerKey
 import ru.seyro.monitor.data.ServerNode
 import ru.seyro.monitor.update.UpdateInfo
@@ -91,9 +93,13 @@ fun MonitorScreen() {
     val lifecycleState by lifecycle.currentStateAsState()
     val configStore = remember { MonitorConfigStore(context) }
     val pollGate = remember { AtomicBoolean(false) }
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
     var config by remember { mutableStateOf(configStore.read()) }
     var nodes by remember { mutableStateOf<List<ServerNode>>(emptyList()) }
+    var overview by remember { mutableStateOf<OnlineOverview?>(null) }
     var lastUpdated by remember { mutableStateOf<Long?>(null) }
+    var historyStartAt by remember { mutableStateOf(0L) }
+    var statisticsClearedMessage by remember { mutableStateOf<String?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val expanded = remember { mutableStateMapOf<ServerKey, Boolean>() }
@@ -112,7 +118,11 @@ fun MonitorScreen() {
             try {
                 val received = withContext(Dispatchers.IO) {
                     if (!pollGate.compareAndSet(false, true)) null
-                    else try { MonitorApi.fetchNodes(config) } finally { pollGate.set(false) }
+                    else try {
+                        val serverNodes = MonitorApi.fetchNodes(config)
+                        val online = runCatching { MonitorApi.fetchOverview(config) }.getOrNull()
+                        serverNodes to online
+                    } finally { pollGate.set(false) }
                 }
                 if (received == null) {
                     delay(1_000L)
@@ -121,12 +131,17 @@ fun MonitorScreen() {
                 val now = System.currentTimeMillis()
                 val cutoff = now - 30L * 60L * 1000L
                 val old = nodes.associateBy { it.key }
-                nodes = received.map { fresh ->
+                val (freshNodes, freshOverview) = received
+                nodes = freshNodes.map { fresh ->
                     val oldSamples = old[fresh.key]?.samples.orEmpty()
                     val byTimestamp = LinkedHashMap<String, MetricSample>()
-                    (oldSamples + fresh.samples).forEach { point -> if (point.epochMillis >= cutoff) byTimestamp[point.sampledAt] = point }
+                    (oldSamples + fresh.samples).forEach {
+                        if (it.epochMillis >= cutoff && it.epochMillis >= historyStartAt) byTimestamp[it.sampledAt] = it
+                    }
                     fresh.copy(samples = byTimestamp.values.sortedBy { it.epochMillis })
                 }
+                if (freshOverview != null) overview = freshOverview
+                else overview = overview?.copy(stale = true)
                 lastUpdated = now
                 loadError = null
                 isLoading = false
@@ -144,10 +159,10 @@ fun MonitorScreen() {
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = Page) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
                 Header(onSettings = { showSettings = true })
                 if (config.token.isNotBlank()) {
-                    OverviewCard(nodes, lastUpdated)
+                    OverviewCard(nodes, lastUpdated, overview)
                     if (loadError != null) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1)),
@@ -197,7 +212,10 @@ fun MonitorScreen() {
                 configStore.save(next)
                 config = next.copy(apiBase = next.apiBase.trim().trimEnd('/'), token = next.token.trim())
                 nodes = emptyList()
+                overview = null
                 lastUpdated = null
+                historyStartAt = 0L
+                statisticsClearedMessage = null
                 loadError = null
                 showSettings = false
             },
@@ -205,9 +223,18 @@ fun MonitorScreen() {
                 configStore.clear()
                 config = MonitorConfig("https://admin.seyro.ru", "")
                 nodes = emptyList()
+                overview = null
                 lastUpdated = null
+                historyStartAt = 0L
+                statisticsClearedMessage = null
                 showSettings = true
             },
+            onClearStatistics = {
+                historyStartAt = System.currentTimeMillis()
+                nodes = nodes.map { it.copy(samples = emptyList()) }
+                statisticsClearedMessage = "Локальная история удалена. Новые точки появятся после следующего замера."
+            },
+            statisticsClearedMessage = statisticsClearedMessage,
             onCheckUpdate = {
                 checkingUpdate = true
                 updateMessage = "Проверяем GitHub Releases…"
@@ -273,13 +300,19 @@ private fun Header(onSettings: () -> Unit) {
 }
 
 @Composable
-private fun OverviewCard(nodes: List<ServerNode>, updated: Long?) {
+private fun OverviewCard(nodes: List<ServerNode>, updated: Long?, overview: OnlineOverview?) {
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF172944)), shape = RoundedCornerShape(21.dp), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 17.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Состояние инфраструктуры", color = Color(0xFFB9C6D9), fontSize = 12.sp)
-                Text("${nodes.count { it.health == "online" }} из ${nodes.size} онлайн", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
-                Text(updated?.let { "Обновлено ${TimeLabel.format(Instant.ofEpochMilli(it))} · каждые 15 сек" } ?: "Ожидание данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
+                Text("${nodes.count { it.health == "online" }} из ${nodes.size} серверов онлайн", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
+                Text("${overview?.onlineUsers?.toString() ?: "—"} человек онлайн", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 9.dp))
+                if (overview?.stale == true) {
+                    Text("Счётчик пользователей устарел", color = Color(0xFFFFD18A), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                }
+                val userSampleTime = overview?.sampledAt?.let(::formatApiTime)
+                Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                Text(updated?.let { "Обновлено ${TimeLabel.format(Instant.ofEpochMilli(it))} · каждые 15 сек" } ?: "Ожидание данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
             }
             Box(Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF25436A)), contentAlignment = Alignment.Center) {
                 Text("${nodes.count { it.health == "online" }}/${nodes.size}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -310,6 +343,8 @@ private fun NodeCard(node: ServerNode, isExpanded: Boolean, onToggle: () -> Unit
                 Column(Modifier.weight(1f).padding(start = 11.dp)) {
                     Text(node.name, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(node.city, node.country).joinToString(", ").ifBlank { "${node.key.role.uppercase()} · ID ${node.key.id}" }, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+                    val nodeSampleTime = formatApiTime(node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)
+                    Text(nodeSampleTime?.let { "Данные получены: $it" } ?: "Данные ещё не получены", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 3.dp))
                 }
                 StatusPill(node)
                 Text(if (isExpanded) "⌃" else "⌄", color = Muted, fontSize = 19.sp, modifier = Modifier.padding(start = 9.dp))
@@ -395,9 +430,11 @@ private fun AccessAndSettingsDialog(
     checkingUpdate: Boolean,
     downloadingUpdate: Boolean,
     updateError: String?,
+    statisticsClearedMessage: String?,
     onDismiss: () -> Unit,
     onSave: (MonitorConfig) -> Unit,
     onDeleteAccess: () -> Unit,
+    onClearStatistics: () -> Unit,
     onCheckUpdate: suspend () -> Unit,
     onDownloadUpdate: suspend () -> Unit
 ) {
@@ -427,6 +464,10 @@ private fun AccessAndSettingsDialog(
                     Text("API", color = Muted, fontSize = 10.sp)
                     Text(config.apiBase, color = Ink, fontSize = 13.sp)
                     Text("Bearer-токен сохранён ·••••••••", color = Muted, fontSize = 12.sp)
+                    OutlinedButton(onClick = onClearStatistics, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                        Text("Удалить данные статистики", color = Red)
+                    }
+                    statisticsClearedMessage?.let { Text(it, color = Muted, fontSize = 10.sp) }
                     OutlinedButton(onClick = onDeleteAccess, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) { Text("Удалить доступ", color = Red) }
                 }
                 Surface(color = Color(0xFFF3F6FB), shape = RoundedCornerShape(13.dp), modifier = Modifier.fillMaxWidth()) {
@@ -454,3 +495,7 @@ private fun AccessAndSettingsDialog(
 
 private fun percent(used: Long?, total: Long?): Double? =
     if (used == null || total == null || total <= 0L) null else (used.toDouble() * 100.0 / total).coerceIn(0.0, 100.0)
+
+private fun formatApiTime(value: String?): String? = value?.let {
+    runCatching { TimeLabel.format(Instant.parse(it)) }.getOrNull()
+}
