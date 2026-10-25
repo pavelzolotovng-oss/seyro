@@ -97,6 +97,7 @@ fun MonitorScreen() {
     var config by remember { mutableStateOf(configStore.read()) }
     var nodes by remember { mutableStateOf<List<ServerNode>>(emptyList()) }
     var overview by remember { mutableStateOf<OnlineOverview?>(null) }
+    var overviewExpanded by remember { mutableStateOf(false) }
     var lastUpdated by remember { mutableStateOf<Long?>(null) }
     var historyStartAt by remember { mutableStateOf(0L) }
     var statisticsClearedMessage by remember { mutableStateOf<String?>(null) }
@@ -163,7 +164,7 @@ fun MonitorScreen() {
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
                 Header(onSettings = { showSettings = true })
                 if (config.token.isNotBlank()) {
-                    OverviewCard(nodes, lastUpdated, overview)
+                    OverviewCard(nodes, lastUpdated, overview, overviewExpanded) { overviewExpanded = !overviewExpanded }
                     if (loadError != null) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1)),
@@ -301,22 +302,33 @@ private fun Header(onSettings: () -> Unit) {
 }
 
 @Composable
-private fun OverviewCard(nodes: List<ServerNode>, updated: Long?, overview: OnlineOverview?) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF172944)), shape = RoundedCornerShape(21.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 17.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Состояние инфраструктуры", color = Color(0xFFB9C6D9), fontSize = 12.sp)
-                Text("${nodes.count { it.health == "online" }} из ${nodes.size} серверов онлайн", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
-                Text("${overview?.onlineUsers?.toString() ?: "—"} человек онлайн", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 9.dp))
-                if (overview?.stale == true) {
-                    Text("Счётчик пользователей устарел", color = Color(0xFFFFD18A), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
-                }
-                val userSampleTime = overview?.sampledAt?.let(::formatApiTime)
-                Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
-                Text(updated?.let { "Обновлено ${TimeLabel.format(Instant.ofEpochMilli(it))} · каждые 15 сек" } ?: "Ожидание данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+private fun OverviewCard(
+    nodes: List<ServerNode>,
+    updated: Long?,
+    overview: OnlineOverview?,
+    expanded: Boolean,
+    onToggle: () -> Unit
+) {
+    val onlineNodes = nodes.count { it.health == "online" }
+    val userSampleTime = overview?.sampledAt?.let(::formatApiTime)
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF172944)),
+        shape = RoundedCornerShape(21.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 13.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Состояние инфраструктуры", color = Color(0xFFB9C6D9), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text(if (expanded) "⌃" else "⌄", color = Color(0xFFB9C6D9), fontSize = 19.sp)
             }
-            Box(Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF25436A)), contentAlignment = Alignment.Center) {
-                Text("${nodes.count { it.health == "online" }}/${nodes.size}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text("${overview?.onlineUsers?.toString() ?: "—"} человек онлайн", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
+            Text("$onlineNodes из ${nodes.size} серверов онлайн", color = Color(0xFFB9C6D9), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+            if (overview?.stale == true) {
+                Text("Счётчик пользователей устарел", color = Color(0xFFFFD18A), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+            if (expanded) {
+                Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 7.dp))
+                Text(updated?.let { "Обновлено ${TimeLabel.format(Instant.ofEpochMilli(it))} · каждые 15 сек" } ?: "Ожидание данных", color = Color(0xFF8EA2BF), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
             }
         }
     }
@@ -353,8 +365,8 @@ private fun SectionHeader(count: Int, selectedRangeMinutes: Int, onRangeSelected
 @Composable
 private fun NodeCard(node: ServerNode, isExpanded: Boolean, rangeMinutes: Int, onToggle: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(19.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 15.dp, vertical = 14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp)) {
+            Row(Modifier.fillMaxWidth().clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(if (node.key.role == "in") Color(0xFFEAF0FF) else Color(0xFFF0EBFF)), contentAlignment = Alignment.Center) {
                     Text(if (node.key.role == "in") "IN" else "OUT", color = if (node.key.role == "in") Accent else Color(0xFF8056DC), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
