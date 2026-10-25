@@ -91,5 +91,5 @@ jobs:
             SEYRO Monitor Android app, version 0.1.
             Built from `main`; reads server metrics through the existing read-only Monitor API.
           prerelease: false
-          make_latest: false
+          make_latest: true
           files: SEYRO_Monitor/seyro-monitor.apk
