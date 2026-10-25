@@ -1,6 +1,6 @@
 # SEYRO
 
-Единый репозиторий двух Android-проектов: **SEYRO** (VPN-клиент) и **SEYRO Monitor**.
+Репозиторий Android VPN-клиента **SEYRO**.
 
 ## Основной принцип разработки
 
@@ -23,12 +23,6 @@
 [Исходники SEYRO](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Lite_Light) · [Сборка SEYRO](https://github.com/pavelzolotovng-oss/seyro/actions/workflows/android-apk.yml) · [Релизы SEYRO](https://github.com/pavelzolotovng-oss/seyro/releases)
 
 > Успешная сборка подтверждает создание APK, но сама по себе не доказывает, что VPN пропускает трафик. После выпуска нужно проверить подключение и открытие сайтов на Android-устройстве.
-
-## SEYRO Monitor
-
-Мониторинг серверов остаётся отдельным приложением в том же репозитории.
-
-[Исходники SEYRO Monitor](https://github.com/pavelzolotovng-oss/seyro/tree/main/SEYRO_Monitor)
 
 ## Подпись и обновления
 
