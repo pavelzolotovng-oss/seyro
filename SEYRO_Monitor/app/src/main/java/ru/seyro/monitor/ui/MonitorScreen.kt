@@ -357,7 +357,7 @@ private fun OverviewCard(
                 }
                 Text("Среднее, минимум и максимум — по истории в памяти (до 30 минут)", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(bottom = 5.dp))
                 nodes.forEachIndexed { index, node ->
-                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Grid))
+                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE7ECF4)))
                     NodeCard(node, expandedNodes[node.key] == true, rangeMinutes) { onNodeToggle(node.key) }
                 }
             }
