@@ -94,22 +94,6 @@ fun MonitorApp() {
     var connectionError by remember { mutableStateOf<String?>(null) }
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
 
-    LaunchedEffect(Unit) {
-        val preferences = context.getSharedPreferences("monitor_app_update", android.content.Context.MODE_PRIVATE)
-        val now = System.currentTimeMillis()
-        val lastCheck = preferences.getLong("last_update_check_at", 0L)
-        if (now - lastCheck >= UPDATE_CHECK_INTERVAL_MS) {
-            when (val result = UpdateRepository().check(BuildConfig.VERSION_NAME)) {
-                is UpdateCheck.Available -> {
-                    preferences.edit().putLong("last_update_check_at", now).apply()
-                    pendingUpdate = result.update
-                }
-                UpdateCheck.NoUpdate -> preferences.edit().putLong("last_update_check_at", now).apply()
-                is UpdateCheck.Failed -> Unit
-            }
-        }
-    }
-
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, _ ->
             appVisible = source.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
@@ -234,8 +218,6 @@ fun MonitorApp() {
         )
     }
 }
-
-private const val UPDATE_CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
