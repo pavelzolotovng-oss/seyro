@@ -203,7 +203,14 @@ fun MonitorApp() {
             title = { Text("Доступно обновление") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Новая версия: ${update.versionName}\nУстановлена: ${BuildConfig.VERSION_NAME}")
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("НОВАЯ ВЕРСИЯ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(update.versionName, style = MaterialTheme.typography.titleLarge)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("УСТАНОВЛЕНА СЕЙЧАС", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BuildConfig.VERSION_NAME, style = MaterialTheme.typography.bodyLarge)
+                    }
                     Text("Обновление установится поверх приложения и сохранит настройки.")
                     Text(update.releaseNotes)
                 }
@@ -212,7 +219,7 @@ fun MonitorApp() {
                 Button(onClick = {
                     UpdateDownloader.start(context, update)
                     pendingUpdate = null
-                }) { Text("Скачать и установить") }
+                }) { Text("Скачать ${update.versionName}") }
             },
             dismissButton = { TextButton(onClick = { pendingUpdate = null }) { Text("Позже") } }
         )
