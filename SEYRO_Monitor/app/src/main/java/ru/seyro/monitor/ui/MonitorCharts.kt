@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -24,6 +25,7 @@ import ru.seyro.monitor.data.MetricSample
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.ceil
 
 private val Grid = Color(0xFFE7ECF4)
@@ -38,12 +40,20 @@ fun MetricChart(
     unit: String,
     points: List<MetricSample>,
     values: List<Double?>,
+    rangeMinutes: Int,
     fixedMaximum: Double? = null,
     secondValues: List<Double?>? = null,
     secondLabel: String? = null
 ) {
-    val samples = points.sortedBy { it.epochMillis }
-    val allValues = values + (secondValues ?: emptyList())
+    val ordered = points.withIndex().sortedBy { it.value.epochMillis }
+    val endTime = ordered.lastOrNull()?.value?.epochMillis ?: System.currentTimeMillis()
+    val rangeMillis = rangeMinutes.coerceAtLeast(1) * 60_000L
+    val startTime = endTime - rangeMillis
+    val visible = ordered.filter { it.value.epochMillis >= startTime }
+    val samples = visible.map { it.value }
+    val visibleValues = visible.map { values.getOrNull(it.index) }
+    val visibleSecondValues = secondValues?.let { series -> visible.map { series.getOrNull(it.index) } }
+    val allValues = visibleValues + (visibleSecondValues ?: emptyList())
     val maxValue = fixedMaximum ?: dynamicMaximum(allValues)
     Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -53,6 +63,12 @@ fun MetricChart(
         if (samples.isEmpty() || allValues.none { it != null }) {
             Text("Нет данных", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
         } else {
+            if (visibleSecondValues == null) {
+                SeriesStats(values = visibleValues, unit = unit)
+            } else {
+                SeriesStats(values = visibleValues, unit = unit, label = "ВХОДЯЩАЯ", color = Blue)
+                SeriesStats(values = visibleSecondValues, unit = unit, label = "ИСХОДЯЩАЯ", color = Violet)
+            }
             Canvas(Modifier.fillMaxWidth().height(112.dp).padding(top = 10.dp)) {
                 val left = 31.dp.toPx()
                 val right = size.width - 4.dp.toPx()
@@ -73,9 +89,8 @@ fun MetricChart(
                             textSize = 9.sp.toPx()
                         })
                 }
-                val firstTime = samples.first().epochMillis
-                val span = (samples.last().epochMillis - firstTime).coerceAtLeast(1L).toFloat()
-                fun x(index: Int): Float = left + chartWidth * ((samples[index].epochMillis - firstTime) / span)
+                val span = rangeMillis.toFloat().coerceAtLeast(1f)
+                fun x(index: Int): Float = left + chartWidth * ((samples[index].epochMillis - startTime) / span)
                 fun drawSeries(series: List<Double?>, color: Color) {
                     val displayValues = smoothForDisplay(series)
                     var run = mutableListOf<Offset>()
@@ -111,13 +126,13 @@ fun MetricChart(
                     }
                     drawRun()
                 }
-                drawSeries(values, Blue)
-                secondValues?.let { drawSeries(it, Violet) }
+                drawSeries(visibleValues, Blue)
+                visibleSecondValues?.let { drawSeries(it, Violet) }
             }
             Row(Modifier.fillMaxWidth().padding(start = 31.dp, top = 2.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(samples.firstOrNull()?.let { TimeFormat.format(Instant.ofEpochMilli(it.epochMillis)) } ?: "—", color = Muted, fontSize = 10.sp)
-                Text(samples.getOrNull(samples.size / 2)?.let { TimeFormat.format(Instant.ofEpochMilli(it.epochMillis)) } ?: "—", color = Muted, fontSize = 10.sp)
-                Text(samples.lastOrNull()?.let { TimeFormat.format(Instant.ofEpochMilli(it.epochMillis)) } ?: "—", color = Muted, fontSize = 10.sp)
+                Text(TimeFormat.format(Instant.ofEpochMilli(startTime)), color = Muted, fontSize = 10.sp)
+                Text(TimeFormat.format(Instant.ofEpochMilli(startTime + rangeMillis / 2)), color = Muted, fontSize = 10.sp)
+                Text(TimeFormat.format(Instant.ofEpochMilli(endTime)), color = Muted, fontSize = 10.sp)
             }
             if (secondValues != null) {
                 Row(Modifier.padding(top = 7.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -127,6 +142,33 @@ fun MetricChart(
             }
         }
     }
+}
+
+@Composable
+private fun SeriesStats(values: List<Double?>, unit: String, label: String? = null, color: Color = Blue) {
+    val last = values.lastOrNull()
+    val present = values.filterNotNull()
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (label != null) Text(label, color = color, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(70.dp))
+        StatValue("ПОСЛЕДНЕЕ", formatMetric(last, unit), Modifier.weight(1f))
+        StatValue("МИН", formatMetric(present.minOrNull(), unit), Modifier.weight(0.75f))
+        StatValue("МАКС", formatMetric(present.maxOrNull(), unit), Modifier.weight(0.75f))
+    }
+}
+
+@Composable
+private fun StatValue(label: String, value: String, modifier: Modifier) {
+    Column(modifier) {
+        Text(label, color = Muted, fontSize = 7.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(value, color = Color(0xFF253149), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+private fun formatMetric(value: Double?, unit: String): String = when {
+    value == null -> "—"
+    unit == "%" -> String.format(Locale.getDefault(), "%.1f%%", value)
+    unit == "Б/с" -> formatRate(value)
+    else -> String.format(Locale.getDefault(), "%.1f %s", value, unit)
 }
 
 /** Smooth only the visual series; the in-memory and API samples remain untouched. Nulls split the line into separate runs. */
