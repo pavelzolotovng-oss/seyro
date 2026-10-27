@@ -392,15 +392,14 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
                 MiniValue("RAM", percent(latest?.ramUsedBytes, latest?.ramTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("ДИСК", percent(latest?.diskUsedBytes, latest?.diskTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("XRAY", when {
-                    !nodeOnline && node.xrayActive == true -> "API: активен"
-                    !nodeOnline && node.xrayActive == false -> "API: выкл."
+                    !nodeOnline -> "—"
                     disabledInPanel && node.xrayActive == true -> "Запущен*"
                     node.xrayActive == true -> "Активен"
                     node.xrayActive == false -> "Выкл."
                     else -> "—"
                 })
             }
-            if (disabledInPanel && node.xrayActive == true) {
+            if (disabledInPanel && nodeOnline && node.xrayActive == true) {
                 Text("Узел выключен в панели, но Xray ещё работает", color = Color(0xFFAC6D13), fontSize = 9.sp, modifier = Modifier.padding(start = 50.dp, top = 5.dp))
             }
             Text(
@@ -497,9 +496,7 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
     val disabledInPanel = node.isDisabledInPanel()
     val nodeOnline = node.health.equals("online", ignoreCase = true)
     val connection = if (disabledInPanel) "Выключен" to Muted else connectionStatus(node.health)
-    val xray = when {
-        !nodeOnline && node.xrayActive == true -> "Последнее состояние Xray по API: работает" to Muted
-        !nodeOnline && node.xrayActive == false -> "Последнее состояние Xray по API: остановлен" to Muted
+    val xray = if (!nodeOnline) null else when {
         disabledInPanel && node.xrayActive == true -> "Xray запущен" to Color(0xFFAC6D13)
         node.xrayActive == true -> "Xray работает" to Green
         node.xrayActive == false -> "Xray остановлен" to Red
@@ -512,7 +509,7 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Text("$roleName · $place", color = Ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             StatusBadge(connection.first, connection.second)
-            StatusBadge(xray.first, xray.second)
+            xray?.let { StatusBadge(it.first, it.second) }
         }
         val signal = node.lastSeenAt?.let(::formatMoscowDateTime)
             ?: (node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)?.let(::formatMoscowDateTime)
