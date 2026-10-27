@@ -514,7 +514,7 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
         val signal = node.lastSeenAt?.let(::formatMoscowDateTime)
             ?: (node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)?.let(::formatMoscowDateTime)
         Text(signal?.let { "Последний сигнал: $it МСК" } ?: "Последний сигнал: нет данных", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 6.dp))
-        if (disabledInPanel && node.xrayActive == true) {
+        if (disabledInPanel && nodeOnline && node.xrayActive == true) {
             Text("Узел выключен в панели, но Xray ещё работает", color = Color(0xFFAC6D13), fontSize = 9.sp, modifier = Modifier.padding(top = 5.dp))
         }
         if (!disabledInPanel) {
