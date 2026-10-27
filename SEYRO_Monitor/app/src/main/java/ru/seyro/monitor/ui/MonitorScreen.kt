@@ -35,6 +35,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -78,13 +80,46 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicBoolean
 
-private val Page = Color(0xFFF4F7FC)
-private val CardOutline = Color(0xFFC8D5E7)
-private val Ink = Color(0xFF17233A)
-private val Muted = Color(0xFF8290A5)
-private val Accent = Color(0xFF356AF4)
-private val Green = Color(0xFF17A77A)
-private val Red = Color(0xFFD65B64)
+internal data class MonitorPalette(
+    val page: Color, val card: Color, val text: Color, val muted: Color, val border: Color,
+    val accent: Color, val green: Color, val red: Color, val amber: Color, val menuText: Color,
+    val grid: Color, val softSurface: Color, val divider: Color, val errorSurface: Color,
+    val goodSurface: Color, val goodText: Color, val roleInSurface: Color, val roleOutSurface: Color,
+    val isDark: Boolean
+)
+private val LightMonitorPalette = MonitorPalette(
+    page = Color(0xFFE9EEF5), card = Color(0xFFFFFFFF), text = Color(0xFF16243C),
+    muted = Color(0xFF52627A), border = Color(0xFFCBD6E5), accent = Color(0xFF1767F5),
+    green = Color(0xFF168965), red = Color(0xFFCF3948), amber = Color(0xFF9A6418),
+    menuText = Color(0xFFE7EDF7), grid = Color(0xFFE1E7F0), softSurface = Color(0xFFF1F5FA),
+    divider = Color(0xFFE1E7F0), errorSurface = Color(0xFFFFF0F0), goodSurface = Color(0xFFE8F7F1),
+    goodText = Color(0xFF188966), roleInSurface = Color(0xFFEAF0FF), roleOutSurface = Color(0xFFF0EBFF),
+    isDark = false
+)
+private val DarkMonitorPalette = MonitorPalette(
+    page = Color(0xFF0B1220), card = Color(0xFF142238), text = Color(0xFFE7EDF7),
+    muted = Color(0xFFA8B8CE), border = Color(0xFF33465F), accent = Color(0xFF1767F5),
+    green = Color(0xFF4DD6A1), red = Color(0xFFFF7A86), amber = Color(0xFFF1BD63),
+    menuText = Color(0xFFE7EDF7), grid = Color(0xFF33465F), softSurface = Color(0xFF1B2C44),
+    divider = Color(0xFF33465F), errorSurface = Color(0xFF321E2A), goodSurface = Color(0xFF17392F),
+    goodText = Color(0xFF72E0B7), roleInSurface = Color(0xFF1B2D4A), roleOutSurface = Color(0xFF2A2446),
+    isDark = true
+)
+internal val LocalMonitorPalette = staticCompositionLocalOf { LightMonitorPalette }
+private val Page: Color @Composable get() = LocalMonitorPalette.current.page
+private val CardSurface: Color @Composable get() = LocalMonitorPalette.current.card
+private val CardOutline: Color @Composable get() = LocalMonitorPalette.current.border
+private val Ink: Color @Composable get() = LocalMonitorPalette.current.text
+private val Muted: Color @Composable get() = LocalMonitorPalette.current.muted
+private val Accent: Color @Composable get() = LocalMonitorPalette.current.accent
+private val Green: Color @Composable get() = LocalMonitorPalette.current.green
+private val Red: Color @Composable get() = LocalMonitorPalette.current.red
+private val Amber: Color @Composable get() = LocalMonitorPalette.current.amber
+private val SoftSurface: Color @Composable get() = LocalMonitorPalette.current.softSurface
+private val DividerColor: Color @Composable get() = LocalMonitorPalette.current.divider
+private val ErrorSurface: Color @Composable get() = LocalMonitorPalette.current.errorSurface
+private val GoodSurface: Color @Composable get() = LocalMonitorPalette.current.goodSurface
+private val GoodText: Color @Composable get() = LocalMonitorPalette.current.goodText
 private val TimeLabel = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 private val MoscowDateTimeLabel = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm").withZone(ZoneId.of("Europe/Moscow"))
 
@@ -96,6 +131,8 @@ fun MonitorScreen() {
     val configStore = remember { MonitorConfigStore(context) }
     val pollGate = remember { AtomicBoolean(false) }
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
+    val themePrefs = remember { context.getSharedPreferences("seyro_monitor_theme", android.content.Context.MODE_PRIVATE) }
+    var isDarkTheme by remember { mutableStateOf(themePrefs.getBoolean("dark_theme", false)) }
     var config by remember { mutableStateOf(configStore.read()) }
     var nodes by remember { mutableStateOf<List<ServerNode>>(emptyList()) }
     var overview by remember { mutableStateOf<OnlineOverview?>(null) }
@@ -163,6 +200,7 @@ fun MonitorScreen() {
 
     val selectedNode = nodes.firstOrNull { it.key == selectedNodeKey }
 
+    CompositionLocalProvider(LocalMonitorPalette provides if (isDarkTheme) DarkMonitorPalette else LightMonitorPalette) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = Page) {
             if (selectedNode != null) {
@@ -172,17 +210,20 @@ fun MonitorScreen() {
                     onRangeSelected = { selectedRangeMinutes = it },
                     onBack = { selectedNodeKey = null }
                 )
-            } else Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
-                Header(onSettings = { showSettings = true })
+            } else Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
+                Header(isDarkTheme = isDarkTheme, onToggleTheme = {
+                    isDarkTheme = !isDarkTheme
+                    themePrefs.edit().putBoolean("dark_theme", isDarkTheme).apply()
+                }, onSettings = { showSettings = true })
                 if (config.token.isNotBlank()) {
                     LazyColumn(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         item { OverviewCard(nodes, lastUpdated, overview, overviewExpanded) { overviewExpanded = !overviewExpanded } }
                         if (loadError != null) {
                             item {
-                                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1)), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                                Card(colors = CardDefaults.cardColors(containerColor = ErrorSurface), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                                     Text("Нет связи: $loadError · повторим автоматически", color = Red, fontSize = 12.sp, modifier = Modifier.padding(13.dp))
                                 }
                             }
@@ -286,28 +327,35 @@ fun MonitorScreen() {
             }
         )
     }
+    }
 }
 
 @Composable
-private fun Header(onSettings: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun Header(isDarkTheme: Boolean, onToggleTheme: () -> Unit, onSettings: () -> Unit) {
+    Surface(color = Color(0xFF102338), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 16.dp)) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Accent), contentAlignment = Alignment.Center) {
             Text("S", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.SansSerif)
         }
         Column(Modifier.padding(start = 11.dp).weight(1f)) {
-            Text("SEYRO", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
-            Text("MONITORING", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.1.sp)
+            Text("SEYRO", color = Color(0xFFE7EDF7), fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
+            Text("MONITORING", color = Color(0xFFA8B8CE), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.1.sp)
         }
-        Surface(color = Color(0xFFE8F7F1), shape = CircleShape) {
+        Surface(color = GoodSurface, shape = CircleShape) {
             Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp).clip(CircleShape).background(Green))
-                Text(" LIVE", color = Color(0xFF188966), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(" LIVE", color = GoodText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
-        Spacer(Modifier.width(9.dp))
-        Surface(color = Color.White, shape = RoundedCornerShape(13.dp), modifier = Modifier.size(40.dp).clickable(onClick = onSettings)) {
-            Box(contentAlignment = Alignment.Center) { Text("⚙", color = Ink, fontSize = 20.sp) }
+        Spacer(Modifier.width(6.dp))
+        Surface(color = Color(0xFF1B344E), shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp).clickable(onClick = onToggleTheme)) {
+            Box(contentAlignment = Alignment.Center) { Text(if (isDarkTheme) "☀" else "☾", color = Color.White, fontSize = 19.sp) }
         }
+        Spacer(Modifier.width(6.dp))
+        Surface(color = Color(0xFF1B344E), shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp).clickable(onClick = onSettings)) {
+            Box(contentAlignment = Alignment.Center) { Text("⚙", color = Color.White, fontSize = 20.sp) }
+        }
+    }
     }
 }
 
@@ -322,28 +370,28 @@ private fun OverviewCard(
     val onlineNodes = nodes.count { it.health.equals("online", ignoreCase = true) && !it.isDisabledInPanel() }
     val userSampleTime = overview?.sampledAt?.let(::formatMoscowDateTime)
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardSurface),
         elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
         border = BorderStroke(1.dp, CardOutline),
-        shape = RoundedCornerShape(21.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 13.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp)) {
             Row(Modifier.fillMaxWidth().clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
-                Text("Состояние инфраструктуры", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("Состояние инфраструктуры", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 Text(if (expanded) "⌃" else "⌄", color = Muted, fontSize = 19.sp)
             }
-            Text("${overview?.onlineUsers?.toString() ?: "—"} человек онлайн", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
+            Text("${overview?.onlineUsers?.toString() ?: "—"} человек онлайн", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
             Text("$onlineNodes из ${nodes.size} серверов онлайн", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
             if (overview?.stale == true) {
-                Text("Счётчик пользователей устарел", color = Color(0xFFAC6D13), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("Счётчик пользователей устарел", color = Amber, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
             }
             if (expanded) {
                 Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 7.dp))
                 Text(updated?.let { "Обновлено ${MoscowDateTimeLabel.format(Instant.ofEpochMilli(it))} МСК · каждые 15 сек" } ?: "Ожидание данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
                 Text("СОСТОЯНИЕ УЗЛОВ", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp, bottom = 3.dp))
                 nodes.forEachIndexed { index, node ->
-                    if (index > 0) Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(Color(0xFFE7ECF4)))
+                    if (index > 0) Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(DividerColor))
                     InfrastructureNodeStatus(node)
                 }
             }
@@ -368,19 +416,19 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
     val disabledInPanel = node.isDisabledInPanel()
     val nodeOnline = node.health.equals("online", ignoreCase = true)
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardSurface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         border = BorderStroke(1.dp, CardOutline),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(if (node.key.role == "in") Color(0xFFEAF0FF) else Color(0xFFF0EBFF)), contentAlignment = Alignment.Center) {
-                    Text(node.key.role.uppercase(), color = if (node.key.role == "in") Accent else Color(0xFF8056DC), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Box(Modifier.size(39.dp).clip(RoundedCornerShape(13.dp)).background(if (node.key.role == "in") LocalMonitorPalette.current.roleInSurface else LocalMonitorPalette.current.roleOutSurface), contentAlignment = Alignment.Center) {
+                    Text(node.key.role.uppercase(), color = if (node.key.role == "in") Accent else Color(0xFF9B6CF6), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(Modifier.weight(1f).padding(start = 11.dp)) {
-                    Text(node.name, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(node.name, color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(node.city, node.country).joinToString(", ").ifBlank { "${node.key.role.uppercase()} · ID ${node.key.id}" }, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
                 }
                 val (connectionText, connectionColor) = if (disabledInPanel) "ВЫКЛЮЧЕН" to Muted else connectionStatus(node.health)
@@ -400,7 +448,7 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
                 })
             }
             if (disabledInPanel && nodeOnline && node.xrayActive == true) {
-                Text("Узел выключен в панели, но Xray ещё работает", color = Color(0xFFAC6D13), fontSize = 9.sp, modifier = Modifier.padding(start = 50.dp, top = 5.dp))
+                Text("Узел выключен в панели, но Xray ещё работает", color = Amber, fontSize = 9.sp, modifier = Modifier.padding(start = 50.dp, top = 5.dp))
             }
             Text(
                 latest?.sampledAt?.let { formatApiTime(it) }?.let { "Замер $it · нажмите, чтобы открыть графики" } ?: "Нет данных · нажмите для подробностей",
@@ -417,13 +465,14 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp).clickable(onClick = onBack)) {
+            Surface(color = CardSurface, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp).clickable(onClick = onBack)) {
                 Box(contentAlignment = Alignment.Center) { Text("‹", color = Ink, fontSize = 27.sp) }
             }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(node.name, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${node.key.role.uppercase()} · графики и метрики", color = Muted, fontSize = 10.sp)
             }
+            Surface(color = SoftSurface, shape = CircleShape) { Text("МСК", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) }
             val (connectionText, connectionColor) = connectionStatus(node.health)
             StatePill(connectionText, connectionColor)
         }
@@ -431,7 +480,7 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
             Text("ПЕРИОД", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             listOf(5, 15, 30).forEach { minutes ->
                 val selected = minutes == rangeMinutes
-                Surface(color = if (selected) Accent else Color.White, shape = RoundedCornerShape(9.dp), modifier = Modifier.padding(start = 6.dp).clickable { onRangeSelected(minutes) }) {
+                Surface(color = if (selected) Accent else CardSurface, shape = RoundedCornerShape(9.dp), modifier = Modifier.padding(start = 6.dp).clickable { onRangeSelected(minutes) }) {
                     Text("${minutes}м", color = if (selected) Color.White else Ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                 }
             }
@@ -445,13 +494,13 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item {
                     Surface(
-                        color = Color.White,
-                        shape = RoundedCornerShape(20.dp),
+                        color = CardSurface,
+                        shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, CardOutline),
                         shadowElevation = 4.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(Modifier.padding(14.dp)) {
+                        Column(Modifier.padding(16.dp)) {
                             Text("ПОКАЗАТЕЛЬ", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Row(
                                 Modifier.fillMaxWidth().padding(top = 10.dp),
@@ -460,7 +509,7 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
                                 listOf("ЦП", "ОЗУ", "Диск", "Сеть").forEach { metric ->
                                     val selected = activeMetric == metric
                                     Surface(
-                                        color = if (selected) Accent else Color(0xFFF1F5FB),
+                                        color = if (selected) Accent else SoftSurface,
                                         shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier.weight(1f).clickable { activeMetric = metric }
                                     ) {
@@ -574,15 +623,16 @@ private fun StatePill(value: String, color: Color) {
     }
 }
 
+@Composable
 private fun syncLabel(node: ServerNode): Pair<String, Color> {
     val state = node.currentSyncState?.takeIf { it.isNotBlank() } ?: legacyCurrentSyncState(node)
     return when (state) {
         "success" -> "Синхронизация ОК" to Green
         "error" -> "Ошибка синхронизации" to Red
         "pending" -> "Ожидается синхронизация" to Color(0xFFAC6D13)
-        "dry_run" -> "Пробный режим" to Color(0xFF536A91)
+        "dry_run" -> "Пробный режим" to Muted
         "disabled" -> "Узел выключен в панели" to Muted
-        "provisioning" -> "Узел настраивается" to Color(0xFF536A91)
+        "provisioning" -> "Узел настраивается" to Muted
         "unknown" -> "Текущее состояние неизвестно" to Muted
         else -> "Текущее состояние неизвестно" to Muted
     }
@@ -609,6 +659,7 @@ private fun reportLabel(status: String?): String = when (status?.lowercase()) {
     else -> status
 }
 
+@Composable
 private fun connectionStatus(health: String): Pair<String, Color> = when (health.lowercase()) {
     "online" -> "На связи" to Green
     "offline" -> "Нет связи" to Red
@@ -619,10 +670,10 @@ private fun connectionStatus(health: String): Pair<String, Color> = when (health
 @Composable
 private fun StaleNotice(sampledAt: String?) {
     val age = formatRelativeAge(sampledAt)
-    Surface(color = Color(0xFFFFF4E5), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().padding(top = 13.dp)) {
+    Surface(color = SoftSurface, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().padding(top = 13.dp)) {
         Text(
             age?.let { "Нет свежих метрик · последние данные $it" } ?: "Нет свежих метрик · ждём новый пакет",
-            color = Color(0xFF9A6418), fontSize = 11.sp, modifier = Modifier.padding(10.dp)
+            color = Amber, fontSize = 11.sp, modifier = Modifier.padding(10.dp)
         )
     }
 }
@@ -639,7 +690,7 @@ private fun MiniValue(label: String, value: String) {
 private fun EmptyState(message: String) {
     Box(Modifier.fillMaxWidth().height(300.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 28.dp)) {
-            Box(Modifier.size(54.dp).clip(CircleShape).background(Color(0xFFE9EFF9)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(54.dp).clip(CircleShape).background(SoftSurface), contentAlignment = Alignment.Center) {
                 Text("···", color = Accent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
             Text(message, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 14.dp))
@@ -700,7 +751,7 @@ private fun AccessAndSettingsDialog(
                     statisticsClearedMessage?.let { Text(it, color = Muted, fontSize = 10.sp) }
                     OutlinedButton(onClick = onDeleteAccess, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) { Text("Удалить доступ", color = Red) }
                 }
-                Surface(color = Color(0xFFF3F6FB), shape = RoundedCornerShape(13.dp), modifier = Modifier.fillMaxWidth()) {
+                Surface(color = SoftSurface, shape = RoundedCornerShape(13.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("Версия ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         Button(onClick = { scope.launch { onCheckUpdate() } }, enabled = !checkingUpdate && !downloadingUpdate, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Accent), shape = RoundedCornerShape(11.dp)) {
@@ -719,7 +770,7 @@ private fun AccessAndSettingsDialog(
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } },
-        containerColor = Color.White
+        containerColor = CardSurface
     )
 }
 
