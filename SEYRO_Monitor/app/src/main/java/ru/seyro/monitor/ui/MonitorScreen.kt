@@ -524,9 +524,9 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
         val currentSyncState = node.currentSyncState?.takeIf { it.isNotBlank() } ?: legacyCurrentSyncState(node)
         val reportRepeatsCurrentState = node.syncStatus?.equals(currentSyncState, ignoreCase = true) == true
         val reportSummary = if (reportRepeatsCurrentState) {
-            "Последний отчёт${syncTime?.let { " · $it МСК" } ?: ""}
+            "Последний отчёт${syncTime?.let { " · $it МСК" } ?: ""}"
         } else {
-            "Последний отчёт: $lastReport${syncTime?.let { " · $it МСК" } ?: ""}
+            "Последний отчёт: $lastReport${syncTime?.let { " · $it МСК" } ?: ""}"
         }
         Text(
             reportSummary,
