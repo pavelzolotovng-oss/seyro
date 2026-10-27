@@ -1,4 +1,3 @@
-# Build after Monitor current-sync-state support
 name: Build SEYRO Monitor
 
 on:
@@ -14,12 +13,14 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: SEYRO_Monitor
@@ -75,6 +76,10 @@ jobs:
           gradle --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk seyro-monitor.apk
 
+      - name: Remove signing keystore
+        if: always()
+        run: rm -f app/seyro-release.jks
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -82,6 +87,18 @@ jobs:
           path: SEYRO_Monitor/seyro-monitor.apk
           if-no-files-found: error
           retention-days: 30
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: seyro-monitor-0.1-${{ github.run_number }}
+          path: SEYRO_Monitor
 
       - name: Publish SEYRO Monitor release
         uses: softprops/action-gh-release@v2
@@ -94,3 +111,4 @@ jobs:
           prerelease: false
           make_latest: true
           files: SEYRO_Monitor/seyro-monitor.apk
+
