@@ -455,15 +455,31 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
             ?: (node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)?.let(::formatMoscowDateTime)
         Text(signal?.let { "Последний сигнал: $it МСК" } ?: "Последний сигнал: нет данных", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 6.dp))
         Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            StatusBadge(sync, syncColor)
-            val syncTime = node.syncRanAt?.let(::formatMoscowDateTime)
-            Text(syncTime?.let { "Последняя синхронизация: $it МСК" } ?: "Последняя синхронизация: нет данных", color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            StatusBadge("Сейчас · $sync", syncColor)
+        }
+        val lastReport = reportLabel(node.syncStatus)
+        val syncTime = node.syncRanAt?.let(::formatMoscowDateTime)
+        Text(
+            "Последний отчёт: $lastReport${syncTime?.let { " · $it МСК" } ?: ""}",
+            color = Muted,
+            fontSize = 9.sp,
+            modifier = Modifier.padding(top = 5.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (node.syncRanAt == null && node.syncStatus == null) {
+            Text("Отчётов ещё нет", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
         }
         node.syncMessage?.let {
-            Text(it, color = Ink, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+            Text("Последний отчёт: $it", color = Ink, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
         }
         if (node.enabledTransports.isNotEmpty()) {
-            val protocolLabel = if (node.key.role == "in") "Входящие протоколы" else "Протоколы"
+            val isCurrent = node.health.equals("online", ignoreCase = true)
+            val protocolLabel = when {
+                !isCurrent -> "Последние известные протоколы"
+                node.key.role == "in" -> "Входящие протоколы"
+                else -> "Протоколы"
+            }
             Text("$protocolLabel: ${node.enabledTransports.joinToString(" · ")}", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
         }
         if (node.metricsStale) {
@@ -486,14 +502,37 @@ private fun StatePill(label: String, value: String, color: Color) {
     }
 }
 
-private fun syncLabel(node: ServerNode): Pair<String, Color> = when {
-        node.syncPending -> "Ожидается синхронизация" to Color(0xFFAC6D13)
-        node.syncStatus == "success" -> "Синхронизация ОК" to Green
-        node.syncStatus == "error" -> "Ошибка синхронизации" to Red
-        node.syncStatus == "dry_run" -> "Проверка без применения" to Color(0xFF536A91)
-        node.syncStatus == null -> "Нет отчёта" to Muted
-        else -> "Статус: ${node.syncStatus}" to Muted
+private fun syncLabel(node: ServerNode): Pair<String, Color> {
+    val state = node.currentSyncState?.takeIf { it.isNotBlank() } ?: legacyCurrentSyncState(node)
+    return when (state) {
+        "success" -> "Синхронизация ОК" to Green
+        "error" -> "Ошибка синхронизации" to Red
+        "pending" -> "Ожидается синхронизация" to Color(0xFFAC6D13)
+        "dry_run" -> "Пробный режим" to Color(0xFF536A91)
+        "disabled" -> "Узел выключен в панели" to Muted
+        "provisioning" -> "Узел настраивается" to Color(0xFF536A91)
+        "unknown" -> "Текущее состояние неизвестно" to Muted
+        else -> "Текущее состояние неизвестно" to Muted
     }
+}
+
+/** Older FastAPI versions only expose the last report, which is not a live state. */
+private fun legacyCurrentSyncState(node: ServerNode): String {
+    if (node.health.lowercase() != "online" || node.xrayActive == false) return "unknown"
+    return when {
+        node.syncPending -> "pending"
+        node.syncStatus in setOf("success", "error", "dry_run") -> node.syncStatus!!
+        else -> "unknown"
+    }
+}
+
+private fun reportLabel(status: String?): String = when (status?.lowercase()) {
+    "success" -> "Успешно"
+    "error" -> "Ошибка"
+    "dry_run" -> "Пробный режим"
+    null -> "нет отчёта"
+    else -> status
+}
 
 private fun connectionStatus(health: String): Pair<String, Color> = when (health.lowercase()) {
     "online" -> "На связи" to Green
