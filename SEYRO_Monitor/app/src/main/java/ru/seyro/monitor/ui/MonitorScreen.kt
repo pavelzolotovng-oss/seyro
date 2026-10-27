@@ -521,8 +521,15 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
         }
         val lastReport = reportLabel(node.syncStatus)
         val syncTime = node.syncRanAt?.let(::formatMoscowDateTime)
+        val currentSyncState = node.currentSyncState?.takeIf { it.isNotBlank() } ?: legacyCurrentSyncState(node)
+        val reportRepeatsCurrentState = node.syncStatus?.equals(currentSyncState, ignoreCase = true) == true
+        val reportSummary = if (reportRepeatsCurrentState) {
+            "Последний отчёт${syncTime?.let { " · $it МСК" } ?: ""}
+        } else {
+            "Последний отчёт: $lastReport${syncTime?.let { " · $it МСК" } ?: ""}
+        }
         Text(
-            "Последний отчёт: $lastReport${syncTime?.let { " · $it МСК" } ?: ""}",
+            reportSummary,
             color = Muted,
             fontSize = 9.sp,
             modifier = Modifier.padding(top = 5.dp),
