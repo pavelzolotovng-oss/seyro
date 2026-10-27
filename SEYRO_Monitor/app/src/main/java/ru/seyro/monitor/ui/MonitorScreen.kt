@@ -392,7 +392,8 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
                 MiniValue("RAM", percent(latest?.ramUsedBytes, latest?.ramTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("ДИСК", percent(latest?.diskUsedBytes, latest?.diskTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("XRAY", when {
-                    !nodeOnline -> "Не проверен"
+                    !nodeOnline && node.xrayActive == true -> "API: активен"
+                    !nodeOnline && node.xrayActive == false -> "API: выкл."
                     disabledInPanel && node.xrayActive == true -> "Запущен*"
                     node.xrayActive == true -> "Активен"
                     node.xrayActive == false -> "Выкл."
@@ -497,7 +498,8 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
     val nodeOnline = node.health.equals("online", ignoreCase = true)
     val connection = if (disabledInPanel) "Выключен" to Muted else connectionStatus(node.health)
     val xray = when {
-        !nodeOnline -> "Xray не проверен" to Muted
+        !nodeOnline && node.xrayActive == true -> "Последнее состояние Xray по API: работает" to Muted
+        !nodeOnline && node.xrayActive == false -> "Последнее состояние Xray по API: остановлен" to Muted
         disabledInPanel && node.xrayActive == true -> "Xray запущен" to Color(0xFFAC6D13)
         node.xrayActive == true -> "Xray работает" to Green
         node.xrayActive == false -> "Xray остановлен" to Red
