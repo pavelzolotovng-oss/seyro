@@ -1,3 +1,4 @@
+# Build after Monitor current-sync-state support
 name: Build SEYRO Monitor
 
 on:
