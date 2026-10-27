@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,10 +38,11 @@ import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.abs
 
-private val Grid = Color(0xFFE7ECF4)
-private val Muted = Color(0xFF8290A5)
-private val Blue = Color(0xFF356AF4)
-private val Violet = Color(0xFF9B6CF6)
+internal val CpuSeriesColor = Color(0xFF1767F5)
+internal val RamSeriesColor = Color(0xFF9B6CF6)
+internal val DiskSeriesColor = Color(0xFF39A979)
+internal val NetworkInColor = Color(0xFF16A6A1)
+internal val NetworkOutColor = Color(0xFFF08A24)
 private val TimeFormat = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 
 @Composable
@@ -52,8 +54,11 @@ fun MetricChart(
     rangeMinutes: Int,
     fixedMaximum: Double? = null,
     secondValues: List<Double?>? = null,
-    secondLabel: String? = null
+    secondLabel: String? = null,
+    lineColor: Color = CpuSeriesColor,
+    secondLineColor: Color = NetworkOutColor
 ) {
+    val palette = LocalMonitorPalette.current
     val ordered = points.withIndex().sortedBy { it.value.epochMillis }
     val endTime = ordered.lastOrNull()?.value?.epochMillis ?: System.currentTimeMillis()
     val rangeMillis = rangeMinutes.coerceAtLeast(1) * 60_000L
@@ -70,17 +75,17 @@ fun MetricChart(
     } ?: samples.lastIndex.takeIf { it >= 0 }
     Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(title, color = Color(0xFF253149), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Text(if (fixedMaximum != null) "0–100 $unit" else "0–${formatAxis(maxValue, unit)}", color = Muted, fontSize = 11.sp)
+            Text(title, color = palette.text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(if (fixedMaximum != null) "0–100 $unit" else "0–${formatAxis(maxValue, unit)}", color = palette.muted, fontSize = 11.sp)
         }
         if (samples.isEmpty() || allValues.none { it != null }) {
-            Text("Нет данных", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
+            Text("Нет данных", color = palette.muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
         } else {
             if (visibleSecondValues == null) {
-                SeriesStats(points, values, unit = unit)
+                SeriesStats(points, values, unit = unit, color = lineColor)
             } else {
-                SeriesStats(points, values, unit = unit, label = "ВХОДЯЩАЯ", color = Blue)
-                SeriesStats(points, secondValues.orEmpty(), unit = unit, label = "ИСХОДЯЩАЯ", color = Violet)
+                SeriesStats(points, values, unit = unit, label = "ВХОДЯЩАЯ", color = lineColor)
+                SeriesStats(points, secondValues.orEmpty(), unit = unit, label = "ИСХОДЯЩАЯ", color = secondLineColor)
             }
             Canvas(Modifier.fillMaxWidth().height(112.dp).padding(top = 10.dp)) {
                 val left = 31.dp.toPx()
@@ -91,14 +96,14 @@ fun MetricChart(
                 val chartHeight = (bottom - top).coerceAtLeast(1f)
                 for (line in 0..4) {
                     val y = top + chartHeight * line / 4f
-                    drawLine(Grid, Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
+                    drawLine(palette.grid, Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
                 }
                 for (line in 0..4) {
                     val fraction = 1f - line / 4f
                     val label = if (fixedMaximum != null) "${(fraction * 100).toInt()}" else formatAxis(maxValue * fraction, unit)
                     drawContext.canvas.nativeCanvas.drawText(label, 0f, top + chartHeight * line / 4f + 4.dp.toPx(),
                         android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                            color = android.graphics.Color.rgb(130, 144, 165)
+                            color = palette.muted.toArgb()
                             textSize = 9.sp.toPx()
                         })
                 }
@@ -148,10 +153,10 @@ fun MetricChart(
                 val chosenIndex = selectedIndex ?: -1
                 if (chosenIndex in samples.indices) {
                     val selectedX = x(chosenIndex)
-                    drawLine(Color(0xFF8794A8), Offset(selectedX, top), Offset(selectedX, bottom), strokeWidth = 1.dp.toPx())
+                    drawLine(palette.muted, Offset(selectedX, top), Offset(selectedX, bottom), strokeWidth = 1.dp.toPx())
                 }
-                drawSeries(visibleValues, Blue)
-                visibleSecondValues?.let { drawSeries(it, Violet) }
+                drawSeries(visibleValues, lineColor)
+                visibleSecondValues?.let { drawSeries(it, secondLineColor) }
             }
             val chosenIndex = selectedIndex ?: -1
             if (chosenIndex in samples.indices) {
@@ -160,12 +165,12 @@ fun MetricChart(
                     append("  ·  ").append(title).append(" ").append(formatMetric(visibleValues.getOrNull(chosenIndex), unit))
                     visibleSecondValues?.let { append("  ·  OUT ").append(formatMetric(it.getOrNull(chosenIndex), unit)) }
                 }
-                Text(detail, color = Color(0xFF253149), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 31.dp, top = 5.dp))
+                Text(detail, color = palette.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 31.dp, top = 5.dp))
             }
             Row(Modifier.fillMaxWidth().padding(start = 31.dp, top = 2.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(TimeFormat.format(Instant.ofEpochMilli(startTime)), color = Muted, fontSize = 10.sp)
-                Text(TimeFormat.format(Instant.ofEpochMilli(startTime + rangeMillis / 2)), color = Muted, fontSize = 10.sp)
-                Text(TimeFormat.format(Instant.ofEpochMilli(endTime)), color = Muted, fontSize = 10.sp)
+                Text(TimeFormat.format(Instant.ofEpochMilli(startTime)), color = palette.muted, fontSize = 10.sp)
+                Text(TimeFormat.format(Instant.ofEpochMilli(startTime + rangeMillis / 2)), color = palette.muted, fontSize = 10.sp)
+                Text(TimeFormat.format(Instant.ofEpochMilli(endTime)), color = palette.muted, fontSize = 10.sp)
             }
             val selectedSample = samples.getOrNull(selectedIndex ?: -1)
             val sliderStartTime = samples.firstOrNull()?.epochMillis ?: startTime
@@ -187,8 +192,8 @@ fun MetricChart(
             )
             if (secondValues != null) {
                 Row(Modifier.padding(top = 7.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Legend(color = Blue, label = "↓ Входящая")
-                    Legend(color = Violet, label = "↑ Исходящая")
+                    Legend(color = lineColor, label = "↓ Входящая")
+                    Legend(color = secondLineColor, label = "↑ Исходящая")
                 }
             }
         }
@@ -203,9 +208,10 @@ private fun ChartScrubber(
     lastTime: String,
     onPositionChange: (Float) -> Unit
 ) {
+    val palette = LocalMonitorPalette.current
     val density = LocalDensity.current
     val inset = with(density) { 11.dp.toPx() }
-    val trackColor = if (enabled) Blue else Muted
+    val trackColor = if (enabled) palette.accent else palette.muted
     fun positionAt(x: Float, width: Float): Float =
         ((x - inset) / (width - inset * 2f).coerceAtLeast(1f)).coerceIn(0f, 1f)
 
@@ -229,27 +235,28 @@ private fun ChartScrubber(
         val right = size.width - inset
         val centerY = size.height / 2f
         val thumbX = left + (right - left) * position.coerceIn(0f, 1f)
-        drawLine(Grid, Offset(left, centerY), Offset(right, centerY), strokeWidth = 5.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(palette.grid, Offset(left, centerY), Offset(right, centerY), strokeWidth = 5.dp.toPx(), cap = StrokeCap.Round)
         drawLine(trackColor, Offset(left, centerY), Offset(thumbX, centerY), strokeWidth = 5.dp.toPx(), cap = StrokeCap.Round)
         for (tick in 0..4) {
             val tickX = left + (right - left) * tick / 4f
-            drawCircle(Color.White.copy(alpha = 0.75f), radius = 1.dp.toPx(), center = Offset(tickX, centerY))
+            drawCircle(palette.card.copy(alpha = 0.75f), radius = 1.dp.toPx(), center = Offset(tickX, centerY))
         }
         drawCircle(trackColor.copy(alpha = 0.15f), radius = 13.dp.toPx(), center = Offset(thumbX, centerY))
-        drawCircle(Color.White, radius = 9.dp.toPx(), center = Offset(thumbX, centerY))
+        drawCircle(palette.card, radius = 9.dp.toPx(), center = Offset(thumbX, centerY))
         drawCircle(trackColor, radius = 6.dp.toPx(), center = Offset(thumbX, centerY))
     }
     Row(
         Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 1.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(firstTime, color = Muted, fontSize = 9.sp)
-        Text(lastTime, color = Muted, fontSize = 9.sp)
+        Text(firstTime, color = palette.muted, fontSize = 9.sp)
+        Text(lastTime, color = palette.muted, fontSize = 9.sp)
     }
 }
 
 @Composable
-private fun SeriesStats(points: List<MetricSample>, values: List<Double?>, unit: String, label: String? = null, color: Color = Blue) {
+private fun SeriesStats(points: List<MetricSample>, values: List<Double?>, unit: String, label: String? = null, color: Color = CpuSeriesColor) {
+    val palette = LocalMonitorPalette.current
     val present = values.filterNotNull()
     val average = present.takeIf { it.isNotEmpty() }?.average()
     val maximumIndex = values.indices.filter { values[it] != null }
@@ -266,10 +273,11 @@ private fun SeriesStats(points: List<MetricSample>, values: List<Double?>, unit:
 
 @Composable
 private fun StatValue(label: String, value: String, modifier: Modifier, detail: String? = null) {
+    val palette = LocalMonitorPalette.current
     Column(modifier) {
-        Text(label, color = Muted, fontSize = 7.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(label, color = palette.muted, fontSize = 7.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         Text(value, color = Color(0xFF253149), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-        detail?.let { Text(it, color = Muted, fontSize = 8.sp, maxLines = 1) }
+        detail?.let { Text(it, color = palette.muted, fontSize = 8.sp, maxLines = 1) }
     }
 }
 
@@ -320,9 +328,10 @@ private fun smoothForDisplay(values: List<Double?>, scale: Double): List<Double?
 
 @Composable
 private fun Legend(color: Color, label: String) {
+    val palette = LocalMonitorPalette.current
     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         Canvas(Modifier.padding(top = 5.dp).height(6.dp).fillMaxWidth(0.04f)) { drawCircle(color) }
-        Text(label, color = Muted, fontSize = 10.sp)
+        Text(label, color = palette.muted, fontSize = 10.sp)
     }
 }
 
