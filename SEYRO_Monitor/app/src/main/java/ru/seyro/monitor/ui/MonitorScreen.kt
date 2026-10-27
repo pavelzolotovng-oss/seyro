@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,6 +79,7 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val Page = Color(0xFFF4F7FC)
+private val CardOutline = Color(0xFFC8D5E7)
 private val Ink = Color(0xFF17233A)
 private val Muted = Color(0xFF8290A5)
 private val Accent = Color(0xFF356AF4)
@@ -321,6 +323,8 @@ private fun OverviewCard(
     val userSampleTime = overview?.sampledAt?.let(::formatMoscowDateTime)
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
+        border = BorderStroke(1.dp, CardOutline),
         shape = RoundedCornerShape(21.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -363,6 +367,8 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
     val latest = node.samples.lastOrNull()
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        border = BorderStroke(1.dp, CardOutline),
         shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
