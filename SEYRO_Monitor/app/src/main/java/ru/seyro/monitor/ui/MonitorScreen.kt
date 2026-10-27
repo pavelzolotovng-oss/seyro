@@ -527,10 +527,10 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
                             }
                             Spacer(Modifier.height(4.dp))
                             when (activeMetric) {
-                                "ЦП" -> MetricChart("ЦП", "%", points, points.map { it.cpuPercent }, rangeMinutes, fixedMaximum = 100.0)
-                                "ОЗУ" -> MetricChart("ОЗУ", "%", points, points.map { percent(it.ramUsedBytes, it.ramTotalBytes) }, rangeMinutes, fixedMaximum = 100.0)
-                                "Диск" -> MetricChart("Диск", "%", points, points.map { percent(it.diskUsedBytes, it.diskTotalBytes) }, rangeMinutes, fixedMaximum = 100.0)
-                                else -> MetricChart("Сеть", "Б/с", points, points.map { it.networkRxBytesPerSec }, rangeMinutes, secondValues = points.map { it.networkTxBytesPerSec }, secondLabel = "OUT")
+                                "ЦП" -> MetricChart("ЦП", "%", points, points.map { it.cpuPercent }, rangeMinutes, fixedMaximum = 100.0, lineColor = CpuSeriesColor)
+                                "ОЗУ" -> MetricChart("ОЗУ", "%", points, points.map { percent(it.ramUsedBytes, it.ramTotalBytes) }, rangeMinutes, fixedMaximum = 100.0, lineColor = RamSeriesColor)
+                                "Диск" -> MetricChart("Диск", "%", points, points.map { percent(it.diskUsedBytes, it.diskTotalBytes) }, rangeMinutes, fixedMaximum = 100.0, lineColor = DiskSeriesColor)
+                                else -> MetricChart("Сеть", "Б/с", points, points.map { it.networkRxBytesPerSec }, rangeMinutes, secondValues = points.map { it.networkTxBytesPerSec }, secondLabel = "OUT", lineColor = NetworkInColor, secondLineColor = NetworkOutColor)
                             }
                         }
                     }
@@ -546,7 +546,7 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
     val nodeOnline = node.health.equals("online", ignoreCase = true)
     val connection = if (disabledInPanel) "Выключен" to Muted else connectionStatus(node.health)
     val xray = if (!nodeOnline) null else when {
-        disabledInPanel && node.xrayActive == true -> "Xray запущен" to Color(0xFFAC6D13)
+        disabledInPanel && node.xrayActive == true -> "Xray запущен" to Amber
         node.xrayActive == true -> "Xray работает" to Green
         node.xrayActive == false -> "Xray остановлен" to Red
         else -> "Xray: нет данных" to Muted
