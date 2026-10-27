@@ -63,6 +63,7 @@ object MonitorApi {
                             health = item.optString("health", "unknown"),
                             lastSeenAt = item.nullableString("last_seen_at"),
                             xrayActive = item.opt("xray_active") as? Boolean,
+                            currentSyncState = item.nullableString("current_sync_state")?.lowercase(),
                             syncStatus = item.nullableString("sync_status"),
                             syncRanAt = item.nullableString("sync_ran_at"),
                             syncMessage = item.nullableString("sync_message"),
