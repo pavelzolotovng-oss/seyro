@@ -366,6 +366,7 @@ private fun SectionHeader(count: Int) {
 private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
     val latest = node.samples.lastOrNull()
     val disabledInPanel = node.isDisabledInPanel()
+    val nodeOnline = node.health.equals("online", ignoreCase = true)
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -391,6 +392,7 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
                 MiniValue("RAM", percent(latest?.ramUsedBytes, latest?.ramTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("ДИСК", percent(latest?.diskUsedBytes, latest?.diskTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("XRAY", when {
+                    !nodeOnline -> "Не проверен"
                     disabledInPanel && node.xrayActive == true -> "Запущен*"
                     node.xrayActive == true -> "Активен"
                     node.xrayActive == false -> "Выкл."
@@ -492,8 +494,10 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
 @Composable
 private fun InfrastructureNodeStatus(node: ServerNode) {
     val disabledInPanel = node.isDisabledInPanel()
+    val nodeOnline = node.health.equals("online", ignoreCase = true)
     val connection = if (disabledInPanel) "Выключен" to Muted else connectionStatus(node.health)
     val xray = when {
+        !nodeOnline -> "Xray не проверен" to Muted
         disabledInPanel && node.xrayActive == true -> "Xray запущен" to Color(0xFFAC6D13)
         node.xrayActive == true -> "Xray работает" to Green
         node.xrayActive == false -> "Xray остановлен" to Red
@@ -516,7 +520,7 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
         }
         if (!disabledInPanel) {
             Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                StatusBadge("Сейчас · $sync", syncColor)
+                StatusBadge(sync, syncColor)
             }
         }
         val lastReport = reportLabel(node.syncStatus)
