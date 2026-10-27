@@ -383,7 +383,7 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
                     Text(listOfNotNull(node.city, node.country).joinToString(", ").ifBlank { "${node.key.role.uppercase()} · ID ${node.key.id}" }, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
                 }
                 val (connectionText, connectionColor) = if (disabledInPanel) "ВЫКЛЮЧЕН" to Muted else connectionStatus(node.health)
-                StatePill("СВЯЗЬ", connectionText, connectionColor)
+                StatePill(connectionText, connectionColor)
             }
             if (node.metricsStale) StaleNotice(node.sampledAt ?: latest?.sampledAt)
             Row(Modifier.fillMaxWidth().padding(start = 50.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
@@ -423,7 +423,7 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
                 Text("${node.key.role.uppercase()} · графики и метрики", color = Muted, fontSize = 10.sp)
             }
             val (connectionText, connectionColor) = connectionStatus(node.health)
-            StatePill("СВЯЗЬ", connectionText, connectionColor)
+            StatePill(connectionText, connectionColor)
         }
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("ПЕРИОД", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -558,9 +558,9 @@ private fun StatusBadge(text: String, color: Color) {
 }
 
 @Composable
-private fun StatePill(label: String, value: String, color: Color) {
+private fun StatePill(value: String, color: Color) {
     Surface(color = color.copy(alpha = 0.10f), shape = CircleShape) {
-        Text("$label $value", color = color, fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = .2.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp))
+        Text(value, color = color, fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = .2.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp))
     }
 }
 
