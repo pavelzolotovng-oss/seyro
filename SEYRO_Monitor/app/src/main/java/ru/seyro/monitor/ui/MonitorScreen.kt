@@ -435,15 +435,55 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
             }
         }
         if (node.metricsStale) StaleNotice(node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)
+        var activeMetric by remember(node.key) { mutableStateOf("ЦП") }
         if (node.samples.isEmpty()) {
             EmptyState("Нет данных · ждём пакет секундных замеров")
         } else {
             val points = node.samples
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                item { MetricChart("CPU", "%", points, points.map { it.cpuPercent }, rangeMinutes, fixedMaximum = 100.0) }
-                item { MetricChart("RAM", "%", points, points.map { percent(it.ramUsedBytes, it.ramTotalBytes) }, rangeMinutes, fixedMaximum = 100.0) }
-                item { MetricChart("Диск", "%", points, points.map { percent(it.diskUsedBytes, it.diskTotalBytes) }, rangeMinutes, fixedMaximum = 100.0) }
-                item { MetricChart("Сеть", "Б/с", points, points.map { it.networkRxBytesPerSec }, rangeMinutes, secondValues = points.map { it.networkTxBytesPerSec }, secondLabel = "OUT") }
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                item {
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, CardOutline),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text("ПОКАЗАТЕЛЬ", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf("ЦП", "ОЗУ", "Диск", "Сеть").forEach { metric ->
+                                    val selected = activeMetric == metric
+                                    Surface(
+                                        color = if (selected) Accent else Color(0xFFF1F5FB),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f).clickable { activeMetric = metric }
+                                    ) {
+                                        Box(Modifier.fillMaxWidth().padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
+                                            Text(
+                                                metric,
+                                                color = if (selected) Color.White else Ink,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            when (activeMetric) {
+                                "ЦП" -> MetricChart("ЦП", "%", points, points.map { it.cpuPercent }, rangeMinutes, fixedMaximum = 100.0)
+                                "ОЗУ" -> MetricChart("ОЗУ", "%", points, points.map { percent(it.ramUsedBytes, it.ramTotalBytes) }, rangeMinutes, fixedMaximum = 100.0)
+                                "Диск" -> MetricChart("Диск", "%", points, points.map { percent(it.diskUsedBytes, it.diskTotalBytes) }, rangeMinutes, fixedMaximum = 100.0)
+                                else -> MetricChart("Сеть", "Б/с", points, points.map { it.networkRxBytesPerSec }, rangeMinutes, secondValues = points.map { it.networkTxBytesPerSec }, secondLabel = "OUT")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
