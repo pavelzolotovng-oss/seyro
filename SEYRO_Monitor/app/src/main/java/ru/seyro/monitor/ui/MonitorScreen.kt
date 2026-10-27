@@ -319,7 +319,7 @@ private fun OverviewCard(
     expanded: Boolean,
     onToggle: () -> Unit
 ) {
-    val onlineNodes = nodes.count { it.health == "online" }
+    val onlineNodes = nodes.count { it.health.equals("online", ignoreCase = true) && !it.isDisabledInPanel() }
     val userSampleTime = overview?.sampledAt?.let(::formatMoscowDateTime)
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -365,6 +365,7 @@ private fun SectionHeader(count: Int) {
 @Composable
 private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
     val latest = node.samples.lastOrNull()
+    val disabledInPanel = node.isDisabledInPanel()
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -381,7 +382,7 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
                     Text(node.name, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(node.city, node.country).joinToString(", ").ifBlank { "${node.key.role.uppercase()} · ID ${node.key.id}" }, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
                 }
-                val (connectionText, connectionColor) = connectionStatus(node.health)
+                val (connectionText, connectionColor) = if (disabledInPanel) "ВЫКЛЮЧЕН" to Muted else connectionStatus(node.health)
                 StatePill("СВЯЗЬ", connectionText, connectionColor)
             }
             if (node.metricsStale) StaleNotice(node.sampledAt ?: latest?.sampledAt)
@@ -389,7 +390,15 @@ private fun NodeCard(node: ServerNode, onClick: () -> Unit) {
                 MiniValue("CPU", latest?.cpuPercent?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("RAM", percent(latest?.ramUsedBytes, latest?.ramTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
                 MiniValue("ДИСК", percent(latest?.diskUsedBytes, latest?.diskTotalBytes)?.let { "${it.toInt()}%" } ?: "—")
-                MiniValue("XRAY", when (node.xrayActive) { true -> "Активен"; false -> "Выкл."; null -> "—" })
+                MiniValue("XRAY", when {
+                    disabledInPanel && node.xrayActive == true -> "Запущен*"
+                    node.xrayActive == true -> "Активен"
+                    node.xrayActive == false -> "Выкл."
+                    else -> "—"
+                })
+            }
+            if (disabledInPanel && node.xrayActive == true) {
+                Text("Узел выключен в панели, но Xray ещё работает", color = Color(0xFFAC6D13), fontSize = 9.sp, modifier = Modifier.padding(start = 50.dp, top = 5.dp))
             }
             Text(
                 latest?.sampledAt?.let { formatApiTime(it) }?.let { "Замер $it · нажмите, чтобы открыть графики" } ?: "Нет данных · нажмите для подробностей",
@@ -442,11 +451,13 @@ private fun NodeDetailScreen(node: ServerNode, rangeMinutes: Int, onRangeSelecte
 
 @Composable
 private fun InfrastructureNodeStatus(node: ServerNode) {
-    val connection = connectionStatus(node.health)
-    val xray = when (node.xrayActive) {
-        true -> "Xray работает" to Green
-        false -> "Xray остановлен" to Red
-        null -> "Xray: нет данных" to Muted
+    val disabledInPanel = node.isDisabledInPanel()
+    val connection = if (disabledInPanel) "Выключен" to Muted else connectionStatus(node.health)
+    val xray = when {
+        disabledInPanel && node.xrayActive == true -> "Xray запущен" to Color(0xFFAC6D13)
+        node.xrayActive == true -> "Xray работает" to Green
+        node.xrayActive == false -> "Xray остановлен" to Red
+        else -> "Xray: нет данных" to Muted
     }
     val (sync, syncColor) = syncLabel(node)
     val roleName = if (node.key.role == "in") "Входящий IN" else "Выходящий OUT"
@@ -460,8 +471,13 @@ private fun InfrastructureNodeStatus(node: ServerNode) {
         val signal = node.lastSeenAt?.let(::formatMoscowDateTime)
             ?: (node.sampledAt ?: node.samples.lastOrNull()?.sampledAt)?.let(::formatMoscowDateTime)
         Text(signal?.let { "Последний сигнал: $it МСК" } ?: "Последний сигнал: нет данных", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 6.dp))
-        Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            StatusBadge("Сейчас · $sync", syncColor)
+        if (disabledInPanel && node.xrayActive == true) {
+            Text("Узел выключен в панели, но Xray ещё работает", color = Color(0xFFAC6D13), fontSize = 9.sp, modifier = Modifier.padding(top = 5.dp))
+        }
+        if (!disabledInPanel) {
+            Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                StatusBadge("Сейчас · $sync", syncColor)
+            }
         }
         val lastReport = reportLabel(node.syncStatus)
         val syncTime = node.syncRanAt?.let(::formatMoscowDateTime)
@@ -521,6 +537,9 @@ private fun syncLabel(node: ServerNode): Pair<String, Color> {
         else -> "Текущее состояние неизвестно" to Muted
     }
 }
+
+private fun ServerNode.isDisabledInPanel(): Boolean =
+    currentSyncState.equals("disabled", ignoreCase = true)
 
 /** Older FastAPI versions only expose the last report, which is not a live state. */
 private fun legacyCurrentSyncState(node: ServerNode): String {
