@@ -14,11 +14,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -85,8 +88,7 @@ internal data class MonitorPalette(
     val accent: Color, val green: Color, val red: Color, val amber: Color, val menuText: Color,
     val grid: Color, val softSurface: Color, val divider: Color, val errorSurface: Color,
     val goodSurface: Color, val goodText: Color, val roleInSurface: Color, val roleOutSurface: Color,
-    val isDark: Boolean
-)
+    )
 private val LightMonitorPalette = MonitorPalette(
     page = Color(0xFFE9EEF5), card = Color(0xFFFFFFFF), text = Color(0xFF16243C),
     muted = Color(0xFF52627A), border = Color(0xFFCBD6E5), accent = Color(0xFF1767F5),
@@ -94,16 +96,6 @@ private val LightMonitorPalette = MonitorPalette(
     menuText = Color(0xFFE7EDF7), grid = Color(0xFFE1E7F0), softSurface = Color(0xFFF1F5FA),
     divider = Color(0xFFE1E7F0), errorSurface = Color(0xFFFFF0F0), goodSurface = Color(0xFFE8F7F1),
     goodText = Color(0xFF188966), roleInSurface = Color(0xFFEAF0FF), roleOutSurface = Color(0xFFF0EBFF),
-    isDark = false
-)
-private val DarkMonitorPalette = MonitorPalette(
-    page = Color(0xFF0B1220), card = Color(0xFF142238), text = Color(0xFFE7EDF7),
-    muted = Color(0xFFA8B8CE), border = Color(0xFF33465F), accent = Color(0xFF1767F5),
-    green = Color(0xFF4DD6A1), red = Color(0xFFFF7A86), amber = Color(0xFFF1BD63),
-    menuText = Color(0xFFE7EDF7), grid = Color(0xFF33465F), softSurface = Color(0xFF1B2C44),
-    divider = Color(0xFF33465F), errorSurface = Color(0xFF321E2A), goodSurface = Color(0xFF17392F),
-    goodText = Color(0xFF72E0B7), roleInSurface = Color(0xFF1B2D4A), roleOutSurface = Color(0xFF2A2446),
-    isDark = true
 )
 internal val LocalMonitorPalette = staticCompositionLocalOf { LightMonitorPalette }
 private val Page: Color @Composable get() = LocalMonitorPalette.current.page
@@ -131,8 +123,6 @@ fun MonitorScreen() {
     val configStore = remember { MonitorConfigStore(context) }
     val pollGate = remember { AtomicBoolean(false) }
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
-    val themePrefs = remember { context.getSharedPreferences("seyro_monitor_theme", android.content.Context.MODE_PRIVATE) }
-    var isDarkTheme by remember { mutableStateOf(themePrefs.getBoolean("dark_theme", false)) }
     var config by remember { mutableStateOf(configStore.read()) }
     var nodes by remember { mutableStateOf<List<ServerNode>>(emptyList()) }
     var overview by remember { mutableStateOf<OnlineOverview?>(null) }
@@ -200,7 +190,7 @@ fun MonitorScreen() {
 
     val selectedNode = nodes.firstOrNull { it.key == selectedNodeKey }
 
-    CompositionLocalProvider(LocalMonitorPalette provides if (isDarkTheme) DarkMonitorPalette else LightMonitorPalette) {
+    CompositionLocalProvider(LocalMonitorPalette provides LightMonitorPalette) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = Page) {
             if (selectedNode != null) {
@@ -211,10 +201,7 @@ fun MonitorScreen() {
                     onBack = { selectedNodeKey = null }
                 )
             } else Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).padding(top = (screenHeightDp * 0.05f).dp)) {
-                Header(isDarkTheme = isDarkTheme, onToggleTheme = {
-                    isDarkTheme = !isDarkTheme
-                    themePrefs.edit().putBoolean("dark_theme", isDarkTheme).apply()
-                }, onSettings = { showSettings = true })
+                Header(onSettings = { showSettings = true })
                 if (config.token.isNotBlank()) {
                     LazyColumn(
                         modifier = Modifier.weight(1f),
@@ -331,7 +318,7 @@ fun MonitorScreen() {
 }
 
 @Composable
-private fun Header(isDarkTheme: Boolean, onToggleTheme: () -> Unit, onSettings: () -> Unit) {
+private fun Header(onSettings: () -> Unit) {
     Surface(color = Color(0xFF102338), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 16.dp)) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Accent), contentAlignment = Alignment.Center) {
@@ -347,11 +334,7 @@ private fun Header(isDarkTheme: Boolean, onToggleTheme: () -> Unit, onSettings: 
                 Text(" LIVE", color = GoodText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
-        Spacer(Modifier.width(6.dp))
-        Surface(color = Color(0xFF1B344E), shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp).clickable(onClick = onToggleTheme)) {
-            Box(contentAlignment = Alignment.Center) { Text(if (isDarkTheme) "☀" else "☾", color = Color.White, fontSize = 19.sp) }
-        }
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(8.dp))
         Surface(color = Color(0xFF1B344E), shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp).clickable(onClick = onSettings)) {
             Box(contentAlignment = Alignment.Center) { Text("⚙", color = Color.White, fontSize = 20.sp) }
         }
@@ -369,6 +352,7 @@ private fun OverviewCard(
 ) {
     val onlineNodes = nodes.count { it.health.equals("online", ignoreCase = true) && !it.isDisabledInPanel() }
     val userSampleTime = overview?.sampledAt?.let(::formatMoscowDateTime)
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
     Card(
         colors = CardDefaults.cardColors(containerColor = CardSurface),
         elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
@@ -387,12 +371,18 @@ private fun OverviewCard(
                 Text("Счётчик пользователей устарел", color = Amber, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
             }
             if (expanded) {
-                Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 7.dp))
-                Text(updated?.let { "Обновлено ${MoscowDateTimeLabel.format(Instant.ofEpochMilli(it))} МСК · каждые 15 сек" } ?: "Ожидание данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
-                Text("СОСТОЯНИЕ УЗЛОВ", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp, bottom = 3.dp))
-                nodes.forEachIndexed { index, node ->
-                    if (index > 0) Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(DividerColor))
-                    InfrastructureNodeStatus(node)
+                Column(
+                    Modifier.fillMaxWidth()
+                        .heightIn(max = (screenHeightDp * 0.58f).dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(userSampleTime?.let { "Замер пользователей: $it" } ?: "Замер пользователей: нет данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 7.dp))
+                    Text(updated?.let { "Обновлено ${MoscowDateTimeLabel.format(Instant.ofEpochMilli(it))} МСК · каждые 15 сек" } ?: "Ожидание данных", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                    Text("СОСТОЯНИЕ УЗЛОВ", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp, bottom = 3.dp))
+                    nodes.forEachIndexed { index, node ->
+                        if (index > 0) Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(DividerColor))
+                        InfrastructureNodeStatus(node)
+                    }
                 }
             }
         }
